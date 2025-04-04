@@ -126,12 +126,17 @@ def import_jobs():
             if pd.isna(row['Job Description']):
                 continue
                 
-            # Clean the text by replacing special characters
-            title = str(row['Job Title']).replace('', "'").replace('', "'") if not pd.isna(row['Job Title']) else 'Untitled Job'
-            description = str(row['Job Description']).replace('', "'").replace('', "'")
+            # Clean the text by removing special characters and triple quotes
+            title = str(row['Job Title']).strip() if not pd.isna(row['Job Title']) else 'Untitled Job'
+            description = str(row['Job Description']).strip()
             
             # Extract requirements from description if not provided
-            requirements = str(row.get('Requirements', description))
+            requirements = str(row.get('Requirements', description)).strip()
+            
+            # Remove triple quotes and clean text
+            title = title.replace("'''", "").replace("''", "'").replace("'", "'")
+            description = description.replace("'''", "").replace("''", "'").replace("'", "'")
+            requirements = requirements.replace("'''", "").replace("''", "'").replace("'", "'")
             
             job = Job(
                 title=title,

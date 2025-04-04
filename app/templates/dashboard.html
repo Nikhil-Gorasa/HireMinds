@@ -71,8 +71,8 @@
                 <div class="col-md-6 mb-4">
                     <div class="card h-100">
                         <div class="card-body">
-                            <h5 class="card-title">{{ job.title }}</h5>
-                            <p class="card-text">{{ job.description[:200] }}...</p>
+                            <h5 class="card-title">{{ job.title | replace("'''", "") }}</h5>
+                            <p class="card-text">{{ job.description | replace("'''", "") | truncate(200) }}</p>
                             <div class="d-flex justify-content-between">
                                 <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-primary">
                                     <i class="fas fa-users"></i> View Candidates
@@ -120,7 +120,7 @@
                         <select class="form-select" id="jobSelect" required>
                             <option value="">Choose a job...</option>
                             {% for job in jobs %}
-                            <option value="{{ job.id }}">{{ job.title }}</option>
+                            <option value="{{ job.id }}">{{ job.title | replace("'''", "") | replace('"', '') }}</option>
                             {% endfor %}
                         </select>
                     </div>

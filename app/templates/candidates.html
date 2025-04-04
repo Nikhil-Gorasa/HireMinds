@@ -56,9 +56,18 @@
     <div class="card">
         <div class="card-body">
             <h5 class="card-title">Job Summary</h5>
-            <p><strong>Title:</strong> {{ job.title }}</p>
-            <p><strong>Description:</strong> {{ job.description }}</p>
-            <p><strong>Requirements:</strong> {{ job.requirements }}</p>
+            <div class="mb-3">
+                <strong>Title:</strong> 
+                <span>{{ job.title | replace("'''", "") }}</span>
+            </div>
+            <div class="mb-3">
+                <strong>Description:</strong>
+                <p>{{ job.description | replace("'''", "") }}</p>
+            </div>
+            <div class="mb-3">
+                <strong>Requirements:</strong>
+                <p>{{ job.requirements | replace("'''", "") }}</p>
+            </div>
         </div>
     </div>
 
