@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Candidates for {{ job.title }}</h2>
+        <div>
+            <button class="btn btn-primary me-2" onclick="importCVs()">
+                <i class="fas fa-file-import"></i> Import CVs
+            </button>
+            <button class="btn btn-success" onclick="shortlistCandidates({{ job.id }})">
+                <i class="fas fa-check"></i> Shortlist Candidates
+            </button>
+        </div>
+    </div>
+
+    <!-- Job Summary -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Job Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Description</h6>
+                    <p class="text-muted">{{ job.description }}</p>
+                </div>
+                <div class="col-md-6">
+                    <h6>AI-Generated Summary</h6>
+                    <p class="text-muted">{{ job.summary }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Candidates List -->
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Candidates</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Match Score</th>
+                            <th>Status</th>
+                            <th>Applied Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for candidate in candidates %}
+                        <tr>
+                            <td>{{ candidate.name }}</td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar {% if candidate.match_score >= 0.8 %}bg-success
+                                                             {% elif candidate.match_score >= 0.6 %}bg-warning
+                                                             {% else %}bg-danger{% endif %}"
+                                         role="progressbar"
+                                         style="width: {{ (candidate.match_score * 100)|round }}%"
+                                         aria-valuenow="{{ candidate.match_score }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="1">
+                                        {{ "%.2f"|format(candidate.match_score) }}
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge {% if candidate.status == 'shortlisted' %}bg-success
+                                                  {% elif candidate.status == 'pending' %}bg-warning
+                                                  {% else %}bg-secondary{% endif %}">
+                                    {{ candidate.status }}
+                                </span>
+                            </td>
+                            <td>{{ candidate.created_at.strftime('%Y-%m-%d') }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" onclick="viewCV('{{ candidate.id }}')">
+                                    <i class="fas fa-eye"></i> View CV
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CV Modal -->
+<div class="modal fade" id="cvModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">CV Content</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6>Match Score</h6>
+                    <div class="progress">
+                        <div id="cvMatchScore" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <pre id="cvContent" class="bg-light p-3 rounded"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function importCVs() {
+    fetch('/api/import-cvs', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    })
+    .catch(error => {
+        alert('Error importing CVs: ' + error);
+    });
+}
+
+function shortlistCandidates(jobId) {
+    if (!confirm('Are you sure you want to shortlist candidates for this job?')) {
+        return;
+    }
+    
+    fetch(`/api/shortlist/${jobId}`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    })
+    .catch(error => {
+        alert('Error shortlisting candidates: ' + error);
+    });
+}
+
+function viewCV(candidateId) {
+    fetch(`/api/cv/${candidateId}`)
+        .then(response => response.json())
+        .then(data => {
+            const modal = new bootstrap.Modal(document.getElementById('cvModal'));
+            const progressBar = document.getElementById('cvMatchScore');
+            const cvContent = document.getElementById('cvContent');
+            
+            // Update match score progress bar
+            const score = data.match_score;
+            progressBar.style.width = `${(score * 100)|round}%`;
+            progressBar.className = `progress-bar ${score >= 0.8 ? 'bg-success' : 
+                                                score >= 0.6 ? 'bg-warning' : 'bg-danger'}`;
+            progressBar.textContent = score.toFixed(2);
+            
+            // Update CV content
+            cvContent.textContent = data.cv_text;
+            
+            modal.show();
+        })
+        .catch(error => {
+            alert('Error loading CV: ' + error);
+        });
+}
+</script>
+{% endblock %} 

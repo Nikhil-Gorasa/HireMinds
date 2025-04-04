@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Job Listings</h2>
+        <div>
+            <button class="btn btn-primary me-2" onclick="importJobs()">
+                <i class="fas fa-file-import"></i> Import Jobs
+            </button>
+            <button class="btn btn-success" onclick="processAllData()">
+                <i class="fas fa-cogs"></i> Process All Data
+            </button>
+        </div>
+    </div>
+
+    <!-- Job Listings -->
+    <div class="row">
+        {% for job in jobs %}
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">{{ job.title }}</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Description</h6>
+                            <p class="text-muted">{{ job.description[:200] }}...</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>AI-Generated Summary</h6>
+                            <p class="text-muted">{{ job.summary[:200] }}...</p>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <span class="badge bg-info me-2">
+                            <i class="fas fa-users"></i> {{ job.candidates|length }} Candidates
+                        </span>
+                        <span class="badge bg-success me-2">
+                            <i class="fas fa-check"></i> {{ job.shortlisted_candidates|length if job.shortlisted_candidates else 0 }} Shortlisted
+                        </span>
+                        <span class="badge bg-secondary">
+                            <i class="fas fa-calendar"></i> Posted: {{ job.created_at.strftime('%Y-%m-%d') }}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="btn-group w-100">
+                        <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-info">
+                            <i class="fas fa-users"></i> View Candidates
+                        </a>
+                        <button class="btn btn-success" onclick="shortlistCandidates({{ job.id }})">
+                            <i class="fas fa-check"></i> Shortlist
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Processing Modal -->
+<div class="modal fade" id="processingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Processing Data</h5>
+            </div>
+            <div class="modal-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                </div>
+                <p id="processingStatus">Initializing...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function importJobs() {
+    fetch('/api/import-jobs', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    })
+    .catch(error => {
+        alert('Error importing jobs: ' + error);
+    });
+}
+
+function shortlistCandidates(jobId) {
+    fetch(`/api/shortlist/${jobId}`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        location.reload();
+    })
+    .catch(error => {
+        alert('Error shortlisting candidates: ' + error);
+    });
+}
+
+function processAllData() {
+    const modal = new bootstrap.Modal(document.getElementById('processingModal'));
+    const progressBar = document.querySelector('.progress-bar');
+    const statusText = document.getElementById('processingStatus');
+    
+    modal.show();
+    
+    // Step 1: Import Jobs
+    statusText.textContent = 'Importing jobs...';
+    fetch('/api/import-jobs', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            progressBar.style.width = '33%';
+            statusText.textContent = 'Importing CVs...';
+            return fetch('/api/import-cvs', { method: 'POST' });
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressBar.style.width = '66%';
+            statusText.textContent = 'Shortlisting candidates...';
+            return fetch('/api/shortlist-all', { method: 'POST' });
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressBar.style.width = '100%';
+            statusText.textContent = 'Processing complete!';
+            setTimeout(() => {
+                modal.hide();
+                location.reload();
+            }, 1000);
+        })
+        .catch(error => {
+            statusText.textContent = 'Error: ' + error;
+            progressBar.style.width = '0%';
+            progressBar.classList.remove('bg-success');
+            progressBar.classList.add('bg-danger');
+        });
+}
+</script>
+{% endblock %} 

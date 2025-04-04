@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Job Application Screening Dashboard</h1>
+    
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Jobs</h5>
+                    <p class="card-text display-4">{{ jobs|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Candidates</h5>
+                    <p class="card-text display-4">{{ candidates|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Shortlisted Candidates</h5>
+                    <p class="card-text display-4">{{ shortlisted|length }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Jobs Section -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Active Jobs</h5>
+            <button class="btn btn-primary" onclick="processAllData()">
+                Process All Data
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Job Title</th>
+                            <th>Candidates</th>
+                            <th>Shortlisted</th>
+                            <th>Avg Match Score</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in jobs %}
+                        <tr>
+                            <td>{{ job.title }}</td>
+                            <td>{{ job.get_candidate_count() }}</td>
+                            <td>{{ job.get_shortlisted_count() }}</td>
+                            <td>
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar" 
+                                         style="width: {{ job.get_average_match_score() }}%"
+                                         aria-valuenow="{{ job.get_average_match_score() }}" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        {{ "%.1f"|format(job.get_average_match_score()) }}%
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('candidates', job_id=job.id) }}" class="btn btn-sm btn-info">View Candidates</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shortlisted Candidates Section -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Shortlisted Candidates</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Candidate</th>
+                            <th>Job</th>
+                            <th>Interview Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in shortlisted %}
+                        <tr>
+                            <td>{{ s.get_candidate_name() }}</td>
+                            <td>{{ s.get_job_title() }}</td>
+                            <td>{{ s.interview_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if s.status == 'scheduled' else 'warning' }}">
+                                    {{ s.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" onclick="viewCandidate({{ s.candidate_id }})">
+                                    View CV
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Modal -->
+<div class="modal fade" id="processingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Processing Data</h5>
+            </div>
+            <div class="modal-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" style="width: 0%"></div>
+                </div>
+                <p id="processingStatus">Initializing...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CV Modal -->
+<div class="modal fade" id="cvModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Candidate CV</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6>Match Score</h6>
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <pre id="cvText" class="mb-0"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function processAllData() {
+    const modal = new bootstrap.Modal(document.getElementById('processingModal'));
+    const progressBar = document.querySelector('#processingModal .progress-bar');
+    const statusText = document.getElementById('processingStatus');
+    modal.show();
+
+    // Import jobs
+    statusText.textContent = 'Importing jobs...';
+    fetch('/api/import-jobs', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            progressBar.style.width = '25%';
+            statusText.textContent = 'Importing CVs...';
+            return fetch('/api/import-cvs/1', { method: 'POST' });
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressBar.style.width = '50%';
+            statusText.textContent = 'Shortlisting candidates...';
+            return fetch('/api/shortlist-all', { method: 'POST' });
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressBar.style.width = '100%';
+            statusText.textContent = 'Processing complete!';
+            setTimeout(() => {
+                modal.hide();
+                location.reload();
+            }, 1000);
+        })
+        .catch(error => {
+            statusText.textContent = 'Error: ' + error.message;
+            progressBar.classList.add('bg-danger');
+            progressBar.style.width = '100%';
+        });
+}
+
+function viewCandidate(candidateId) {
+    fetch(`/api/candidate/${candidateId}`)
+        .then(response => response.json())
+        .then(data => {
+            const modal = new bootstrap.Modal(document.getElementById('cvModal'));
+            const progressBar = document.querySelector('#cvModal .progress-bar');
+            const cvText = document.getElementById('cvText');
+            
+            progressBar.style.width = `${data.match_score}%`;
+            progressBar.textContent = `${data.match_score}%`;
+            cvText.textContent = data.cv_text;
+            
+            modal.show();
+        })
+        .catch(error => alert('Error loading CV: ' + error.message));
+}
+</script>
+{% endblock %} 

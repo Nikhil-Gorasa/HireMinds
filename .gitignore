@@ -1,0 +1,13 @@
+[Usecase 5] AI-Powered Job Application Screening System Dataset/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyc~
+*.pyo~
+*.pyd~
+*.pyw~
