@@ -392,4 +392,67 @@ def delete_all_jobs():
         return jsonify({'success': True, 'message': 'All jobs deleted successfully'})
     except Exception as e:
         db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@main.route('/api/delete-candidate/<int:candidate_id>', methods=['DELETE'])
+def delete_candidate(candidate_id):
+    """Delete a single candidate."""
+    try:
+        candidate = Candidate.query.get_or_404(candidate_id)
+        db.session.delete(candidate)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Candidate deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@main.route('/api/delete-candidates', methods=['DELETE'])
+def delete_candidates():
+    """Delete multiple candidates."""
+    try:
+        data = request.get_json()
+        candidate_ids = data.get('candidate_ids', [])
+        
+        if not candidate_ids:
+            return jsonify({'success': False, 'error': 'No candidates specified'}), 400
+            
+        Candidate.query.filter(Candidate.id.in_(candidate_ids)).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'{len(candidate_ids)} candidates deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@main.route('/api/delete-all-candidates/<int:job_id>', methods=['DELETE'])
+def delete_all_candidates(job_id):
+    """Delete all candidates for a job."""
+    try:
+        # Delete all candidates for the job
+        Candidate.query.filter_by(job_id=job_id).delete()
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'All candidates deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@main.route('/api/reanalyze-candidates/<int:job_id>', methods=['POST'])
+def reanalyze_candidates(job_id):
+    """Reanalyze all CVs for a job."""
+    try:
+        job = Job.query.get_or_404(job_id)
+        candidates = Candidate.query.filter_by(job_id=job_id).all()
+        
+        for candidate in candidates:
+            # Reanalyze the CV
+            analysis = analyze_cv(candidate.cv_text, job.description)
+            candidate.analysis = json.dumps(analysis)
+            candidate.match_score = analysis.get('match_score', 0.0)
+        
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Successfully reanalyzed {len(candidates)} candidates'
+        })
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500 

@@ -8,12 +8,7 @@ import json
 def analyze_cv(cv_text, job_summary):
     """Analyze CV against job requirements and compute match score."""
     try:
-        prompt = f"""Analyze this candidate's CV against the job requirements and provide a match score between 0 and 1.
-        Consider the following aspects:
-        1. Skills match
-        2. Experience level
-        3. Qualifications
-        4. Overall fit
+        prompt = f"""Analyze this candidate's CV against the job requirements and provide a detailed analysis in JSON format.
         
         Job Requirements:
         {job_summary}
@@ -21,11 +16,16 @@ def analyze_cv(cv_text, job_summary):
         Candidate's CV:
         {cv_text}
         
-        Return only a number between 0 and 1 representing the match score, where:
-        - 1.0: Perfect match
-        - 0.8-0.9: Strong match
-        - 0.6-0.7: Moderate match
-        - <0.6: Poor match"""
+        Provide your analysis in the following JSON format:
+        {{
+            "match_score": <float between 0 and 1>,
+            "strengths": [<list of key strengths found in CV>],
+            "weaknesses": [<list of areas where CV doesn't meet job requirements>],
+            "key_skills": [<list of relevant skills found in CV>],
+            "recommendation": <string with overall recommendation>
+        }}
+        
+        Only return valid JSON, no other text."""
         
         response = ollama.chat(model='tinyllama:latest', messages=[
             {
@@ -34,18 +34,40 @@ def analyze_cv(cv_text, job_summary):
             }
         ])
         
-        # Extract the score from the response
-        score_text = response['message']['content'].strip()
+        # Extract and parse the JSON response
         try:
-            score = float(score_text)
-            return max(0.0, min(1.0, score))  # Ensure score is between 0 and 1
-        except ValueError:
-            print(f"Error parsing score: {score_text}")
-            return 0.0
+            analysis = json.loads(response['message']['content'].strip())
+            # Ensure all required fields are present
+            analysis = {
+                'match_score': float(analysis.get('match_score', 0.0)),
+                'strengths': analysis.get('strengths', []),
+                'weaknesses': analysis.get('weaknesses', []),
+                'key_skills': analysis.get('key_skills', []),
+                'recommendation': analysis.get('recommendation', 'No recommendation available')
+            }
+            # Ensure match_score is between 0 and 1
+            analysis['match_score'] = max(0.0, min(1.0, analysis['match_score']))
+            return analysis
+            
+        except (ValueError, json.JSONDecodeError) as e:
+            print(f"Error parsing analysis: {str(e)}")
+            return {
+                'match_score': 0.0,
+                'strengths': [],
+                'weaknesses': ['Error analyzing CV'],
+                'key_skills': [],
+                'recommendation': 'Unable to analyze CV properly'
+            }
             
     except Exception as e:
         print(f"Error in CV analysis: {str(e)}")
-        return 0.0
+        return {
+            'match_score': 0.0,
+            'strengths': [],
+            'weaknesses': ['Error analyzing CV'],
+            'key_skills': [],
+            'recommendation': f'Error during analysis: {str(e)}'
+        }
 
 def store_candidate(name, cv_text, job_id, analysis=None):
     """Store a candidate in the database."""

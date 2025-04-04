@@ -2,88 +2,76 @@
 
 {% block content %}
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Candidates for {{ job.title }}</h1>
-        <div class="btn-group">
-            <a href="{{ url_for('main.jobs') }}" class="btn btn-outline-primary">
-                <i class="fas fa-briefcase"></i> Jobs
-            </a>
-            <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-primary">
-                <i class="fas fa-users"></i> Candidates
-            </a>
-        </div>
-    </div>
-
+    <input type="hidden" id="job_id" value="{{ job.id }}">
+    
     <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card shadow-sm">
+        <div class="col-md-4">
+            <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-file-pdf text-danger"></i> Import CVs
-                    </h5>
-                    <form id="cvImportForm" class="mb-3">
+                    <h5 class="card-title">Import CVs</h5>
+                    <form action="{{ url_for('main.import_cvs', job_id=job.id) }}" method="post" enctype="multipart/form-data">
                         <div class="mb-3">
-                            <label for="cvFiles" class="form-label">Select PDF Resume Files</label>
-                            <input type="file" class="form-control" id="cvFiles" accept=".pdf" multiple required>
-                            <div class="form-text">You can select multiple PDF files</div>
+                            <input type="file" class="form-control" name="cvs" multiple accept=".pdf,.doc,.docx">
                         </div>
-                        <button type="submit" class="btn btn-danger">
-                            <i class="fas fa-upload"></i> Import CVs
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload CVs
                         </button>
                     </form>
-                    <div id="cvImportProgress" class="progress d-none">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                    </div>
-                    <div id="cvImportStatus" class="mt-2"></div>
                 </div>
             </div>
         </div>
-
-        <div class="col-md-6">
-            <div class="card shadow-sm">
+        
+        <div class="col-md-4">
+            <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-filter text-success"></i> Shortlist Candidates
-                    </h5>
-                    <button id="shortlistBtn" class="btn btn-success">
-                        <i class="fas fa-check-double"></i> Shortlist Candidates
+                    <h5 class="card-title">Shortlist Candidates</h5>
+                    <button id="reanalyze-button" class="btn btn-info mb-2">
+                        <i class="fas fa-sync"></i> Reanalyze All CVs
                     </button>
-                    <div id="shortlistProgress" class="progress mt-3 d-none">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    <div class="btn-group d-block mb-2">
+                        <button id="filterHighBtn" class="btn btn-success">High Match (>70%)</button>
+                        <button id="filterMediumBtn" class="btn btn-warning">Medium Match (40-70%)</button>
+                        <button id="filterLowBtn" class="btn btn-danger">Low Match (<40%)</button>
+                        <button id="filterAllBtn" class="btn btn-secondary">Show All</button>
                     </div>
-                    <div id="shortlistStatus" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Bulk Actions</h5>
+                    <button id="delete-selected" class="btn btn-danger mb-2">
+                        <i class="fas fa-trash"></i> Delete Selected
+                    </button>
+                    <button id="delete-all" class="btn btn-danger">
+                        <i class="fas fa-trash-alt"></i> Delete All Candidates
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-white">
-            <h5 class="card-title mb-0">Job Summary</h5>
-        </div>
+    <div class="card">
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="text-primary">Job Description:</h6>
-                    <p class="card-text">{{ job.description }}</p>
-                </div>
-                <div class="col-md-6">
-                    <h6 class="text-success">AI Summary:</h6>
-                    <p class="card-text">{{ job.summary }}</p>
-                </div>
-            </div>
+            <h5 class="card-title">Job Summary</h5>
+            <p><strong>Title:</strong> {{ job.title }}</p>
+            <p><strong>Description:</strong> {{ job.description }}</p>
+            <p><strong>Requirements:</strong> {{ job.requirements }}</p>
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header bg-white">
-            <h5 class="card-title mb-0">Candidates List</h5>
-        </div>
+    <div class="card mt-4">
         <div class="card-body">
+            <h5 class="card-title">Candidates List</h5>
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table id="candidates-table" class="table table-striped">
                     <thead>
                         <tr>
+                            <th>
+                                <input type="checkbox" id="select-all" onclick="toggleAllCheckboxes(this)">
+                            </th>
                             <th>Name</th>
                             <th>Match Score</th>
                             <th>Status</th>
@@ -93,37 +81,30 @@
                     </thead>
                     <tbody>
                         {% for candidate in candidates %}
-                        <tr>
+                        <tr data-candidate-id="{{ candidate.id }}" data-match-score="{{ candidate.match_score }}">
+                            <td>
+                                <input type="checkbox" name="candidate_checkbox" value="{{ candidate.id }}">
+                            </td>
                             <td>{{ candidate.name }}</td>
                             <td>
-                                <div class="progress" style="height: 20px;">
-                                    <div class="progress-bar {% if candidate.match_score >= 0.8 %}bg-success{% elif candidate.match_score >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}" 
-                                         role="progressbar" 
-                                         style="width: {{ (candidate.match_score * 100)|round }}%"
-                                         aria-valuenow="{{ candidate.match_score }}" 
-                                         aria-valuemin="0" 
-                                         aria-valuemax="1">
-                                        {{ (candidate.match_score * 100)|round }}%
-                                    </div>
-                                </div>
+                                <span class="badge {% if candidate.match_score >= 0.7 %}bg-success{% elif candidate.match_score >= 0.4 %}bg-warning{% else %}bg-danger{% endif %} fs-6">
+                                    {{ (candidate.match_score * 100)|round|int }}%
+                                </span>
                             </td>
                             <td>
-                                {% if candidate.is_shortlisted %}
-                                <span class="badge bg-success">
-                                    <i class="fas fa-check"></i> Shortlisted
-                                </span>
+                                {% if candidate.shortlisted %}
+                                <span class="badge bg-success">Shortlisted</span>
                                 {% else %}
-                                <span class="badge bg-secondary">
-                                    <i class="fas fa-clock"></i> Pending
-                                </span>
+                                <span class="badge bg-secondary">Pending</span>
                                 {% endif %}
                             </td>
-                            <td>{{ candidate.applied_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>{{ candidate.applied_at.strftime('%Y-%m-%d %H:%M') }}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary view-cv" 
-                                        data-candidate-id="{{ candidate.id }}"
-                                        data-candidate-name="{{ candidate.name }}">
-                                    <i class="fas fa-file-alt"></i> View CV
+                                <button class="btn btn-sm btn-primary view-cv" data-candidate-id="{{ candidate.id }}">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <button class="btn btn-sm btn-danger delete-candidate" data-candidate-id="{{ candidate.id }}">
+                                    <i class="fas fa-trash"></i> Delete
                                 </button>
                             </td>
                         </tr>
@@ -135,16 +116,42 @@
     </div>
 </div>
 
-<!-- Modal for viewing CV -->
-<div class="modal fade" id="cvModal" tabindex="-1">
+<!-- CV Analysis Modal -->
+<div class="modal fade" id="cvModal" tabindex="-1" aria-labelledby="cvModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">CV Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="cvModalLabel">CV Analysis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div id="cvContent"></div>
+                <h6>Match Score</h6>
+                <div class="mb-4">
+                    <span class="badge fs-4" id="modalMatchScore">0%</span>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Strengths</h6>
+                        <ul id="modalStrengths" class="list-group mb-3"></ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Areas for Improvement</h6>
+                        <ul id="modalWeaknesses" class="list-group mb-3"></ul>
+                    </div>
+                </div>
+                
+                <h6>Key Skills</h6>
+                <div id="modalSkills" class="mb-3"></div>
+                
+                <h6>Recommendations</h6>
+                <div id="modalRecommendation" class="alert alert-info mb-3"></div>
+                
+                <h6>CV Content</h6>
+                <div id="cvContent" class="border p-3 bg-light"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -165,6 +172,25 @@
                     <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
                 </div>
                 <div id="processingStatus"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteConfirmMessage">Are you sure you want to delete this candidate?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
             </div>
         </div>
     </div>
@@ -251,36 +277,401 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    document.querySelectorAll('.view-cv').forEach(button => {
-        button.addEventListener('click', async function() {
+    // Delete functionality
+    const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    let deleteCallback = null;
+
+    function showDeleteConfirm(message, callback) {
+        document.getElementById('deleteConfirmMessage').textContent = message;
+        deleteCallback = callback;
+        deleteConfirmModal.show();
+    }
+
+    document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+        if (deleteCallback) {
+            deleteCallback();
+        }
+        deleteConfirmModal.hide();
+    });
+
+    // Single candidate delete
+    document.querySelectorAll('.delete-candidate').forEach(button => {
+        button.addEventListener('click', function() {
             const candidateId = this.dataset.candidateId;
             const candidateName = this.dataset.candidateName;
             
+            showDeleteConfirm(`Are you sure you want to delete ${candidateName}?`, async function() {
+                try {
+                    const response = await fetch(`/api/delete-candidate/${candidateId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        throw new Error('Failed to delete candidate');
+                    }
+                } catch (error) {
+                    alert('Error deleting candidate: ' + error.message);
+                }
+            });
+        });
+    });
+
+    // Bulk delete functionality
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    
+    selectAllCheckbox.addEventListener('change', function() {
+        document.querySelectorAll('.candidate-select').forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateDeleteSelectedButton();
+    });
+
+    document.querySelectorAll('.candidate-select').forEach(checkbox => {
+        checkbox.addEventListener('change', updateDeleteSelectedButton);
+    });
+
+    function updateDeleteSelectedButton() {
+        const selectedCount = document.querySelectorAll('.candidate-select:checked').length;
+        deleteSelectedBtn.disabled = selectedCount === 0;
+        deleteSelectedBtn.innerHTML = `<i class="fas fa-trash"></i> Delete Selected (${selectedCount})`;
+    }
+
+    deleteSelectedBtn.addEventListener('click', function() {
+        const selectedIds = Array.from(document.querySelectorAll('.candidate-select:checked'))
+            .map(checkbox => checkbox.dataset.candidateId);
+        
+        if (selectedIds.length === 0) return;
+
+        showDeleteConfirm(`Are you sure you want to delete ${selectedIds.length} candidates?`, async function() {
             try {
-                const response = await fetch(`/api/candidate-cv/${candidateId}`);
-                const result = await response.json();
+                const response = await fetch('/api/delete-candidates', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ candidate_ids: selectedIds })
+                });
                 
                 if (response.ok) {
-                    document.querySelector('#cvModal .modal-title').textContent = `CV Details - ${candidateName}`;
-                    document.querySelector('#cvContent').innerHTML = `
-                        <div class="mb-3">
-                            <h6 class="text-primary">CV Text:</h6>
-                            <pre class="bg-light p-3 rounded">${result.cv_text}</pre>
-                        </div>
-                        <div class="mb-3">
-                            <h6 class="text-success">AI Analysis:</h6>
-                            <pre class="bg-light p-3 rounded">${result.analysis}</pre>
-                        </div>
-                    `;
-                    cvModal.show();
+                    window.location.reload();
                 } else {
-                    throw new Error(result.error || 'Failed to fetch CV details');
+                    throw new Error('Failed to delete candidates');
                 }
             } catch (error) {
-                alert(`Error: ${error.message}`);
+                alert('Error deleting candidates: ' + error.message);
             }
         });
     });
+
+    // Delete all candidates
+    document.getElementById('deleteAllBtn').addEventListener('click', function() {
+        showDeleteConfirm(`Are you sure you want to delete ALL candidates for this job? This cannot be undone.`, async function() {
+            try {
+                const response = await fetch(`/api/delete-all-candidates/${job_id}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    throw new Error('Failed to delete all candidates');
+                }
+            } catch (error) {
+                alert('Error deleting candidates: ' + error.message);
+            }
+        });
+    });
+
+    // Reanalyze functionality
+    document.getElementById('reanalyzeBtn').addEventListener('click', async function() {
+        try {
+            processingModal.show();
+            document.querySelector('#processingStatus').innerHTML = 
+                '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Reanalyzing all CVs...</div>';
+            
+            const response = await fetch(`/api/reanalyze-candidates/${job_id}`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                document.querySelector('#processingStatus').innerHTML = 
+                    `<div class="alert alert-success"><i class="fas fa-check"></i> ${result.message}</div>`;
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                throw new Error(result.error || 'Failed to reanalyze CVs');
+            }
+        } catch (error) {
+            document.querySelector('#processingStatus').innerHTML = 
+                `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
+        }
+    });
+
+    // Filtering functionality
+    function filterCandidates(minScore, maxScore) {
+        document.querySelectorAll('tbody tr').forEach(row => {
+            const score = parseFloat(row.dataset.matchScore);
+            row.style.display = (score >= minScore && score <= maxScore) ? '' : 'none';
+        });
+    }
+
+    document.getElementById('filterHighBtn').addEventListener('click', () => filterCandidates(0.8, 1.0));
+    document.getElementById('filterMediumBtn').addEventListener('click', () => filterCandidates(0.6, 0.79));
+    document.getElementById('filterLowBtn').addEventListener('click', () => filterCandidates(0, 0.59));
+    document.getElementById('filterAllBtn').addEventListener('click', () => filterCandidates(0, 1));
+});
+
+// Function to handle single candidate deletion
+function deleteSingleCandidate(candidateId) {
+    if (!confirm('Are you sure you want to delete this candidate?')) {
+        return;
+    }
+    
+    fetch(`/api/delete-candidate/${candidateId}`, {
+        method: 'DELETE',
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove the candidate row from the table
+            document.querySelector(`tr[data-candidate-id="${candidateId}"]`).remove();
+            showAlert('success', data.message);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', 'Failed to delete candidate');
+        console.error('Error:', error);
+    });
+}
+
+// Function to handle bulk deletion
+function deleteSelectedCandidates() {
+    const selectedIds = Array.from(document.querySelectorAll('input[name="candidate_checkbox"]:checked'))
+        .map(checkbox => parseInt(checkbox.value));
+    
+    if (selectedIds.length === 0) {
+        showAlert('error', 'Please select candidates to delete');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete ${selectedIds.length} candidates?`)) {
+        return;
+    }
+    
+    fetch('/api/delete-candidates', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ candidate_ids: selectedIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove the deleted candidates from the table
+            selectedIds.forEach(id => {
+                document.querySelector(`tr[data-candidate-id="${id}"]`).remove();
+            });
+            showAlert('success', data.message);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', 'Failed to delete candidates');
+        console.error('Error:', error);
+    });
+}
+
+// Function to delete all candidates
+function deleteAllCandidates() {
+    const jobId = document.getElementById('job_id').value;
+    
+    if (!confirm('Are you sure you want to delete ALL candidates? This action cannot be undone.')) {
+        return;
+    }
+    
+    fetch(`/api/delete-all-candidates/${jobId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Clear the candidates table
+            document.querySelector('#candidates-table tbody').innerHTML = '';
+            showAlert('success', data.message);
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', 'Failed to delete all candidates');
+        console.error('Error:', error);
+    });
+}
+
+// Function to reanalyze all CVs
+function reanalyzeCandidates() {
+    const jobId = document.getElementById('job_id').value;
+    const button = document.getElementById('reanalyze-button');
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reanalyzing...';
+    
+    fetch(`/api/reanalyze-candidates/${jobId}`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            // Reload the page to show updated scores
+            location.reload();
+        } else {
+            showAlert('error', data.error);
+        }
+    })
+    .catch(error => {
+        showAlert('error', 'Failed to reanalyze candidates');
+        console.error('Error:', error);
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-sync"></i> Reanalyze All CVs';
+    });
+}
+
+// Function to show alerts
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Function to toggle all checkboxes
+function toggleAllCheckboxes(source) {
+    const checkboxes = document.getElementsByName('candidate_checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = source.checked;
+    });
+}
+
+// Function to handle viewing CV
+async function viewCV(candidateId) {
+    try {
+        const response = await fetch(`/api/candidate-cv/${candidateId}`);
+        const data = await response.json();
+        
+        // Parse the analysis JSON if it's a string
+        let analysis = {};
+        try {
+            analysis = typeof data.analysis === 'string' ? JSON.parse(data.analysis) : data.analysis;
+        } catch (e) {
+            console.error('Error parsing analysis:', e);
+            analysis = {
+                match_score: 0,
+                strengths: [],
+                weaknesses: ['Error parsing analysis'],
+                key_skills: [],
+                recommendation: 'Error analyzing CV'
+            };
+        }
+        
+        // Update match score
+        const matchScore = analysis.match_score || 0;
+        const matchScorePercent = Math.round(matchScore * 100);
+        const matchScoreElement = document.getElementById('modalMatchScore');
+        
+        // Update the score with appropriate color
+        matchScoreElement.className = `badge fs-4 ${
+            matchScore >= 0.7 ? 'bg-success' : 
+            matchScore >= 0.4 ? 'bg-warning' : 
+            'bg-danger'
+        }`;
+        matchScoreElement.textContent = `${matchScorePercent}%`;
+        
+        // Update strengths
+        const strengthsList = document.getElementById('modalStrengths');
+        strengthsList.innerHTML = analysis.strengths && analysis.strengths.length > 0 
+            ? analysis.strengths.map(strength => 
+                `<li class="list-group-item"><i class="fas fa-check-circle text-success me-2"></i>${strength}</li>`
+            ).join('')
+            : '<li class="list-group-item">No strengths identified</li>';
+        
+        // Update weaknesses
+        const weaknessesList = document.getElementById('modalWeaknesses');
+        weaknessesList.innerHTML = analysis.weaknesses && analysis.weaknesses.length > 0
+            ? analysis.weaknesses.map(weakness => 
+                `<li class="list-group-item"><i class="fas fa-exclamation-circle text-danger me-2"></i>${weakness}</li>`
+            ).join('')
+            : '<li class="list-group-item">No areas for improvement identified</li>';
+        
+        // Update skills
+        const skillsDiv = document.getElementById('modalSkills');
+        skillsDiv.innerHTML = analysis.key_skills && analysis.key_skills.length > 0
+            ? analysis.key_skills.map(skill => 
+                `<span class="badge bg-info me-2 mb-2">${skill}</span>`
+            ).join('')
+            : 'No specific skills identified';
+        
+        // Update recommendation
+        const recommendationDiv = document.getElementById('modalRecommendation');
+        recommendationDiv.textContent = analysis.recommendation || 'No recommendation available';
+        
+        // Update CV content
+        document.getElementById('cvContent').innerHTML = `<pre class="mb-0">${data.cv_text}</pre>`;
+        
+        // Show the modal
+        const cvModal = new bootstrap.Modal(document.getElementById('cvModal'));
+        cvModal.show();
+    } catch (error) {
+        console.error('Error fetching CV:', error);
+        showAlert('error', 'Error loading CV data');
+    }
+}
+
+// Add event listeners when the document is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Add click event listeners for view buttons
+    document.querySelectorAll('.view-cv').forEach(button => {
+        button.addEventListener('click', function() {
+            const candidateId = this.getAttribute('data-candidate-id');
+            viewCV(candidateId);
+        });
+    });
+    
+    // Add click event listeners for delete buttons
+    document.querySelectorAll('.delete-candidate').forEach(button => {
+        button.addEventListener('click', function() {
+            const candidateId = this.getAttribute('data-candidate-id');
+            deleteSingleCandidate(candidateId);
+        });
+    });
+    
+    // Add click event listener for bulk delete button
+    document.getElementById('delete-selected').addEventListener('click', deleteSelectedCandidates);
+    
+    // Add click event listener for delete all button
+    document.getElementById('delete-all').addEventListener('click', deleteAllCandidates);
+    
+    // Add click event listener for reanalyze button
+    document.getElementById('reanalyze-button').addEventListener('click', reanalyzeCandidates);
 });
 </script>
 {% endblock %} 
