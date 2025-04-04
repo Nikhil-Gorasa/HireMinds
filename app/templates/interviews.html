@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Scheduled Interviews</h5>
+        </div>
+        <div class="card-body">
+            {% if interviews %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Candidate Name</th>
+                            <th>Job Title</th>
+                            <th>Interview Date</th>
+                            <th>Time</th>
+                            <th>Match Score</th>
+                            <th>Meeting Link</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for interview in interviews %}
+                        <tr>
+                            <td>{{ interview.candidate.name }}</td>
+                            <td>{{ interview.job.title }}</td>
+                            <td>{{ interview.interview_date.strftime('%A, %B %d, %Y') }}</td>
+                            <td>{{ interview.interview_date.strftime('%I:%M %p') }}</td>
+                            <td>
+                                <span class="badge {% if interview.candidate.match_score >= 0.7 %}bg-success{% elif interview.candidate.match_score >= 0.45 %}bg-warning{% else %}bg-danger{% endif %}">
+                                    {{ (interview.candidate.match_score * 100)|round|int }}%
+                                </span>
+                            </td>
+                            <td>
+                                {% if interview.meeting_link %}
+                                <a href="{{ interview.meeting_link }}" target="_blank" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-video"></i> Join
+                                </a>
+                                {% else %}
+                                <span class="text-muted">Not available</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if interview.status == 'Scheduled' %}bg-info{% elif interview.status == 'Completed' %}bg-success{% elif interview.status == 'Cancelled' %}bg-danger{% else %}bg-warning{% endif %}">
+                                    {{ interview.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-info view-cv" data-candidate-id="{{ interview.candidate.id }}">
+                                    <i class="fas fa-eye"></i> View CV
+                                </button>
+                                <button class="btn btn-sm btn-warning reschedule-interview" data-interview-id="{{ interview.id }}">
+                                    <i class="fas fa-calendar-alt"></i> Reschedule
+                                </button>
+                                <button class="btn btn-sm btn-danger cancel-interview" data-interview-id="{{ interview.id }}">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-4">
+                <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No Scheduled Interviews</h5>
+                <p class="text-muted">Schedule interviews from the Candidates page to see them here.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Reschedule Modal -->
+<div class="modal fade" id="rescheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Reschedule Interview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="rescheduleForm">
+                    <input type="hidden" id="interviewId">
+                    <div class="mb-3">
+                        <label for="newDate" class="form-label">New Date</label>
+                        <input type="date" class="form-control" id="newDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newTime" class="form-label">New Time</label>
+                        <input type="time" class="form-control" id="newTime" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmReschedule">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CV Modal -->
+<div class="modal fade" id="cvModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">CV Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- CV content will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rescheduleModal = new bootstrap.Modal(document.getElementById('rescheduleModal'));
+    const cvModal = new bootstrap.Modal(document.getElementById('cvModal'));
+
+    // Set default date to tomorrow for the date picker
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('newDate').min = tomorrow.toISOString().split('T')[0];
+    document.getElementById('newDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('newTime').value = '09:00';
+
+    // Handle reschedule button clicks
+    document.querySelectorAll('.reschedule-interview').forEach(button => {
+        button.addEventListener('click', function() {
+            document.getElementById('interviewId').value = this.dataset.interviewId;
+            rescheduleModal.show();
+        });
+    });
+
+    // Handle reschedule confirmation
+    document.getElementById('confirmReschedule').addEventListener('click', async function() {
+        const interviewId = document.getElementById('interviewId').value;
+        const newDate = document.getElementById('newDate').value;
+        const newTime = document.getElementById('newTime').value;
+
+        if (!newDate || !newTime) {
+            showAlert('danger', 'Please select both date and time');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/reschedule-interview/${interviewId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    newDateTime: `${newDate}T${newTime}`
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                showAlert('success', 'Interview rescheduled successfully');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            showAlert('danger', `Failed to reschedule: ${error.message}`);
+        }
+        rescheduleModal.hide();
+    });
+
+    // Handle cancel interview
+    document.querySelectorAll('.cancel-interview').forEach(button => {
+        button.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to cancel this interview?')) return;
+
+            const interviewId = this.dataset.interviewId;
+            try {
+                const response = await fetch(`/api/cancel-interview/${interviewId}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('success', 'Interview cancelled successfully');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                showAlert('danger', `Failed to cancel interview: ${error.message}`);
+            }
+        });
+    });
+
+    // Handle view CV
+    document.querySelectorAll('.view-cv').forEach(button => {
+        button.addEventListener('click', async function() {
+            const candidateId = this.dataset.candidateId;
+            try {
+                const response = await fetch(`/api/candidate-cv/${candidateId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const modalBody = document.querySelector('#cvModal .modal-body');
+                    modalBody.innerHTML = `
+                        <div class="mb-3">
+                            <h6>CV Content:</h6>
+                            <div class="border p-3 bg-light">
+                                <pre>${data.cv_text}</pre>
+                            </div>
+                        </div>
+                    `;
+                    cvModal.show();
+                } else {
+                    throw new Error(data.error || 'Failed to load CV');
+                }
+            } catch (error) {
+                showAlert('danger', `Failed to load CV: ${error.message}`);
+            }
+        });
+    });
+});
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+    alertDiv.style.zIndex = '1050';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+</script>
+{% endblock %} 

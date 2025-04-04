@@ -9,14 +9,14 @@ from agents.shortlister import shortlist_candidates, get_shortlisted_candidates
 from agents.scheduler import schedule_interviews, get_scheduled_interviews
 import pandas as pd
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from werkzeug.utils import secure_filename
 import PyPDF2
 import io
 from PyPDF2 import PdfReader
 from agents.summarizer import summarize_job
-from agents.analyzer import analyze_cv
 import json
+import random
 
 main = Blueprint('main', __name__)
 
@@ -292,12 +292,46 @@ def import_all_cvs():
 def shortlist_candidates_route(job_id):
     """Shortlist candidates for a specific job."""
     try:
-        count = shortlist_candidates(job_id)
+        data = request.get_json()
+        count = data.get('count', 5)  # Default to top 5 if not specified
+        
+        # Get all candidates for the job, sorted by match score
+        candidates = Candidate.query.filter_by(job_id=job_id).order_by(Candidate.match_score.desc()).all()
+        
+        # Update status for all candidates
+        for i, candidate in enumerate(candidates):
+            analysis = json.loads(candidate.analysis)
+            if i < count and candidate.match_score >= 0.45:  # Only shortlist if score is at least 0.45
+                status = 'Selected'
+            else:
+                status = 'Rejected'
+            
+            # Create or update shortlisted candidate
+            shortlisted = ShortlistedCandidate.query.filter_by(
+                job_id=job_id,
+                candidate_id=candidate.id
+            ).first()
+            
+            if not shortlisted:
+                shortlisted = ShortlistedCandidate(
+                    job_id=job_id,
+                    candidate_id=candidate.id,
+                    status=status
+                )
+                db.session.add(shortlisted)
+            else:
+                shortlisted.status = status
+        
+        db.session.commit()
         return jsonify({
-            'message': f'Successfully shortlisted {count} candidates'
+            'success': True,
+            'message': f'Successfully shortlisted top {count} candidates',
+            'selected': count,
+            'total': len(candidates)
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @main.route('/api/shortlist-all', methods=['POST'])
 def shortlist_all_candidates():
@@ -460,4 +494,229 @@ def reanalyze_candidates(job_id):
         })
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500 
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@main.route('/api/send-interview-invite/<int:candidate_id>', methods=['POST'])
+def send_interview_invite(candidate_id):
+    """Send interview invite to a single candidate."""
+    try:
+        candidate = Candidate.query.get_or_404(candidate_id)
+        meeting_data = request.get_json()
+        
+        # Send the invite
+        candidate.send_interview_invite(meeting_data)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Interview invite sent to {candidate.name}'
+        })
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to send invite: {str(e)}'
+        }), 500
+
+@main.route('/api/send-all-invites', methods=['POST'])
+def send_all_invites():
+    """Send interview invites to all selected candidates."""
+    try:
+        meeting_data = request.get_json()
+        job_id = request.args.get('job_id')
+        
+        # Get all selected candidates
+        candidates = Candidate.query.filter(
+            Candidate.job_id == job_id,
+            Candidate.shortlisted == True
+        ).all()
+        
+        sent_count = 0
+        errors = []
+        
+        for candidate in candidates:
+            try:
+                candidate.send_interview_invite(meeting_data)
+                sent_count += 1
+            except Exception as e:
+                errors.append(f"Failed to send to {candidate.name}: {str(e)}")
+        
+        return jsonify({
+            'success': True,
+            'sent': sent_count,
+            'total': len(candidates),
+            'errors': errors,
+            'message': f'Successfully sent {sent_count} out of {len(candidates)} invites'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to send invites: {str(e)}'
+        }), 500
+
+@main.route('/api/schedule-interviews', methods=['POST'])
+def schedule_interviews():
+    """Schedule interviews for multiple candidates with automatic meeting link generation."""
+    try:
+        data = request.get_json()
+        start_datetime = datetime.fromisoformat(data['startDateTime'])
+        meeting_duration = int(data['meetingDuration'])
+        break_duration = int(data['breakDuration'])
+        additional_notes = data.get('additionalNotes', '')
+        candidate_ids = data['candidateIds']
+        job_id = data.get('job_id')
+
+        if not job_id:
+            return jsonify({
+                'success': False,
+                'error': 'Job ID is required'
+            }), 400
+
+        # Get all candidates
+        candidates = Candidate.query.filter(
+            Candidate.id.in_(candidate_ids),
+            Candidate.job_id == job_id
+        ).all()
+        
+        # Sort candidates by match score to prioritize higher scoring candidates
+        candidates.sort(key=lambda x: x.match_score, reverse=True)
+        
+        scheduled_count = 0
+        current_datetime = start_datetime
+        
+        for candidate in candidates:
+            try:
+                # Generate unique meeting link using Google Meet-like format
+                meeting_id = ''.join(random.choices('abcdefghijkmnpqrstuvwxyz23456789', k=10))
+                meeting_link = f"https://meet.google.com/{meeting_id}"
+                
+                # Format the email with personalized message
+                personalized_notes = additional_notes.replace('{name}', candidate.name)
+                
+                meeting_data = {
+                    'meetingDate': current_datetime.strftime('%Y-%m-%d %H:%M'),
+                    'meetingDuration': meeting_duration,
+                    'meetingLink': meeting_link,
+                    'additionalNotes': f"""Dear {candidate.name},
+
+We are pleased to invite you for an interview. Your interview has been scheduled for:
+
+Date: {current_datetime.strftime('%A, %B %d, %Y')}
+Time: {current_datetime.strftime('%I:%M %p')}
+Duration: {meeting_duration} minutes
+
+Meeting Link: {meeting_link}
+
+{personalized_notes}
+
+Please ensure you:
+1. Test your audio and video before the interview
+2. Join the meeting 5 minutes early
+3. Have a stable internet connection
+4. Keep your CV and portfolio ready
+
+If you need to reschedule, please contact us at least 24 hours before the interview.
+
+Best regards,
+{current_app.config.get('COMPANY_NAME', 'Our')} Recruitment Team"""
+                }
+                
+                # Send the invite
+                candidate.send_interview_invite(meeting_data)
+                
+                # Update candidate status
+                shortlisted = ShortlistedCandidate.query.filter_by(
+                    candidate_id=candidate.id,
+                    job_id=job_id
+                ).first()
+                
+                if shortlisted:
+                    shortlisted.interview_date = current_datetime
+                    shortlisted.status = 'Scheduled'
+                
+                scheduled_count += 1
+                
+                # Add duration and break for next interview
+                current_datetime += timedelta(minutes=meeting_duration + break_duration)
+                
+            except Exception as e:
+                current_app.logger.error(f"Error scheduling interview for {candidate.name}: {str(e)}")
+                continue
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully scheduled {scheduled_count} interviews',
+            'scheduled': scheduled_count,
+            'total': len(candidates)
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to schedule interviews: {str(e)}'
+        }), 500
+
+@main.route('/interviews')
+def interviews():
+    """Render the interviews page showing all scheduled interviews."""
+    # Get all shortlisted candidates with scheduled interviews
+    interviews = ShortlistedCandidate.query.join(
+        ShortlistedCandidate.candidate
+    ).join(
+        ShortlistedCandidate.job
+    ).filter(
+        ShortlistedCandidate.status == 'Scheduled',
+        ShortlistedCandidate.interview_date.isnot(None)
+    ).order_by(ShortlistedCandidate.interview_date.asc()).all()
+    
+    return render_template('interviews.html', interviews=interviews)
+
+@main.route('/api/reschedule-interview/<int:interview_id>', methods=['POST'])
+def reschedule_interview(interview_id):
+    """Reschedule an interview."""
+    try:
+        data = request.get_json()
+        new_datetime = datetime.fromisoformat(data['newDateTime'])
+        
+        interview = ShortlistedCandidate.query.get_or_404(interview_id)
+        interview.interview_date = new_datetime
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Interview rescheduled successfully'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to reschedule interview: {str(e)}'
+        }), 500
+
+@main.route('/api/cancel-interview/<int:interview_id>', methods=['POST'])
+def cancel_interview(interview_id):
+    """Cancel an interview."""
+    try:
+        interview = ShortlistedCandidate.query.get_or_404(interview_id)
+        interview.status = 'Cancelled'
+        interview.interview_date = None
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Interview cancelled successfully'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to cancel interview: {str(e)}'
+        }), 500 

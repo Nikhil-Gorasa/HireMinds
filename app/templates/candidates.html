@@ -71,6 +71,89 @@
         </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Shortlist Candidates</h5>
+                </div>
+                <div class="card-body">
+                    <div class="form-group mb-3">
+                        <label for="shortlistCount">Number of candidates to shortlist:</label>
+                        <input type="number" class="form-control" id="shortlistCount" value="5" min="1">
+                    </div>
+                    <button class="btn btn-primary" onclick="shortlistCandidates()">
+                        Shortlist Top Candidates
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Shortlisted Candidates</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" id="select-all-interviews" onclick="toggleAllInterviewCheckboxes(this)">
+                                    </th>
+                                    <th>Name</th>
+                                    <th>Match Score</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shortlistedTable">
+                                {% for candidate in candidates|sort(attribute='match_score', reverse=True) %}
+                                    {% set status = candidate.get_shortlist_status() %}
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" class="interview-checkbox" data-candidate-id="{{ candidate.id }}" 
+                                                   {% if status == 'Rejected' %}disabled{% endif %}>
+                                        </td>
+                                        <td>{{ candidate.name }}</td>
+                                        <td>
+                                            <span class="badge {% if candidate.match_score >= 0.7 %}bg-success{% elif candidate.match_score >= 0.45 %}bg-warning{% else %}bg-danger{% endif %}">
+                                                {{ (candidate.match_score * 100)|round|int }}%
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge {% if status == 'Selected' %}bg-success{% elif status == 'Rejected' %}bg-danger{% else %}bg-warning{% endif %}">
+                                                {{ status }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-info view-cv" data-candidate-id="{{ candidate.id }}">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                            {% if status != 'Rejected' %}
+                                            <button class="btn btn-sm btn-primary send-invite" data-candidate-id="{{ candidate.id }}">
+                                                <i class="fas fa-envelope"></i> Send Invite
+                                            </button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-primary" id="sendSelectedInvites">
+                            <i class="fas fa-envelope"></i> Send Invites to Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card mt-4">
         <div class="card-body">
             <h5 class="card-title">Candidates List</h5>
@@ -200,6 +283,56 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add new modal for sending interview invites -->
+<div class="modal fade" id="sendInviteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Schedule Interviews</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="inviteForm">
+                    <div class="mb-3">
+                        <label for="startDate" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="startDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="startTime" class="form-label">Start Time</label>
+                        <input type="time" class="form-control" id="startTime" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="meetingDuration" class="form-label">Interview Duration (minutes)</label>
+                        <select class="form-control" id="meetingDuration" required>
+                            <option value="30">30 minutes</option>
+                            <option value="45">45 minutes</option>
+                            <option value="60" selected>60 minutes</option>
+                            <option value="90">90 minutes</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="breakDuration" class="form-label">Break Between Interviews (minutes)</label>
+                        <select class="form-control" id="breakDuration" required>
+                            <option value="15">15 minutes</option>
+                            <option value="30" selected>30 minutes</option>
+                            <option value="45">45 minutes</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="additionalNotes" class="form-label">Additional Notes Template</label>
+                        <textarea class="form-control" id="additionalNotes" rows="3" 
+                                placeholder="Add any additional notes that will be included in each email. Use {name} for candidate name."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="sendInviteBtn">Schedule Interviews</button>
             </div>
         </div>
     </div>
@@ -681,6 +814,177 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add click event listener for reanalyze button
     document.getElementById('reanalyze-button').addEventListener('click', reanalyzeCandidates);
+});
+
+function shortlistCandidates() {
+    const count = document.getElementById('shortlistCount').value;
+    fetch(`/api/shortlist-candidates/{{ job.id }}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ count: parseInt(count) })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();  // Refresh to show updated status
+        } else {
+            showAlert('danger', data.error || 'Error shortlisting candidates');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Error shortlisting candidates');
+    });
+}
+
+// Function to send interview invite
+async function sendInterviewInvite(candidateId, inviteData) {
+    try {
+        const response = await fetch(`/api/send-interview-invite/${candidateId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(inviteData)
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showAlert('success', 'Interview invite sent successfully');
+        } else {
+            throw new Error(data.error || 'Failed to send invite');
+        }
+    } catch (error) {
+        showAlert('danger', `Error sending invite: ${error.message}`);
+        throw error;
+    }
+}
+
+// Function to send invites to all selected candidates
+async function sendAllInvites(inviteData) {
+    try {
+        const response = await fetch('/api/send-all-invites', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(inviteData)
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showAlert('success', `Successfully sent ${data.sent} invites`);
+        } else {
+            throw new Error(data.error || 'Failed to send invites');
+        }
+    } catch (error) {
+        showAlert('danger', `Error sending invites: ${error.message}`);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const inviteModal = new bootstrap.Modal(document.getElementById('sendInviteModal'));
+    let selectedCandidates = [];
+
+    // Set default date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('startDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('startTime').value = '09:00';
+
+    // Individual send invite button handler
+    document.querySelectorAll('.send-invite').forEach(button => {
+        button.addEventListener('click', function() {
+            const candidateId = this.dataset.candidateId;
+            selectedCandidates = [candidateId];
+            inviteModal.show();
+        });
+    });
+
+    // Handle send selected invites button
+    document.getElementById('sendSelectedInvites').addEventListener('click', function() {
+        selectedCandidates = Array.from(document.getElementsByClassName('interview-checkbox'))
+            .filter(cb => cb.checked)
+            .map(cb => cb.dataset.candidateId);
+
+        if (selectedCandidates.length === 0) {
+            showAlert('warning', 'Please select candidates for interviews');
+            return;
+        }
+
+        inviteModal.show();
+    });
+
+    // Handle send invite form submission
+    document.getElementById('sendInviteBtn').addEventListener('click', async function() {
+        const startDate = document.getElementById('startDate').value;
+        const startTime = document.getElementById('startTime').value;
+        const meetingDuration = parseInt(document.getElementById('meetingDuration').value);
+        const breakDuration = parseInt(document.getElementById('breakDuration').value);
+        const additionalNotes = document.getElementById('additionalNotes').value;
+
+        if (!startDate || !startTime) {
+            showAlert('warning', 'Please select date and time for the interview');
+            return;
+        }
+
+        const scheduleData = {
+            startDateTime: `${startDate}T${startTime}`,
+            meetingDuration: meetingDuration,
+            breakDuration: breakDuration,
+            additionalNotes: additionalNotes,
+            candidateIds: selectedCandidates,
+            job_id: document.getElementById('job_id').value
+        };
+
+        try {
+            const response = await fetch('/api/schedule-interviews', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(scheduleData)
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                showAlert('success', data.message);
+                document.getElementById('sendInviteModal').querySelector('form').reset();
+                bootstrap.Modal.getInstance(document.getElementById('sendInviteModal')).hide();
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                throw new Error(data.error || 'Failed to schedule interviews');
+            }
+        } catch (error) {
+            showAlert('danger', `Error scheduling interviews: ${error.message}`);
+        }
+    });
+});
+
+function toggleAllInterviewCheckboxes(source) {
+    const checkboxes = document.getElementsByClassName('interview-checkbox');
+    Array.from(checkboxes).forEach(checkbox => {
+        if (!checkbox.disabled) {
+            checkbox.checked = source.checked;
+        }
+    });
+}
+
+// Initialize all tooltips
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+});
+
+// Set default date to tomorrow for the invite modal
+document.addEventListener('DOMContentLoaded', function() {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('startDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('startTime').value = '09:00';
 });
 </script>
 {% endblock %} 
