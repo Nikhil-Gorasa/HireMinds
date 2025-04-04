@@ -1,165 +1,138 @@
+<!DOCTYPE html>
 {% extends "base.html" %}
 
 {% block content %}
 <div class="container mt-4">
-    <h1 class="mb-4">Job Application Screening Dashboard</h1>
-    
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Total Jobs</h5>
-                    <p class="card-text display-4">{{ jobs|length }}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Total Candidates</h5>
-                    <p class="card-text display-4">{{ candidates|length }}</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Shortlisted Candidates</h5>
-                    <p class="card-text display-4">{{ shortlisted|length }}</p>
-                </div>
-            </div>
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="mb-4">Dashboard</h2>
         </div>
     </div>
 
-    <!-- Jobs Section -->
+    <!-- Job Import Section -->
     <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Active Jobs</h5>
-            <button class="btn btn-primary" onclick="processAllData()">
-                Process All Data
+        <div class="card-header">
+            <h5 class="mb-0">Import Jobs</h5>
+        </div>
+        <div class="card-body">
+            <form id="importJobsForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="jobFile" class="form-label">Select Excel/CSV File</label>
+                    <input type="file" class="form-control" id="jobFile" name="file" accept=".xlsx,.xls,.csv" required>
+                    <div class="form-text">File must contain a 'job_description' column</div>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-file-import"></i> Import Jobs
+                </button>
+            </form>
+            <div class="progress mt-3 d-none" id="importJobsProgress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div id="importJobsStatus" class="mt-2"></div>
+        </div>
+    </div>
+
+    <!-- CV Import Section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Import CVs</h5>
+        </div>
+        <div class="card-body">
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importCvsModal">
+                <i class="fas fa-file-upload"></i> Import CVs
             </button>
         </div>
+    </div>
+
+    <!-- Processing Section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Process Data</h5>
+        </div>
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Job Title</th>
-                            <th>Candidates</th>
-                            <th>Shortlisted</th>
-                            <th>Avg Match Score</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for job in jobs %}
-                        <tr>
-                            <td>{{ job.title }}</td>
-                            <td>{{ job.get_candidate_count() }}</td>
-                            <td>{{ job.get_shortlisted_count() }}</td>
-                            <td>
-                                <div class="progress">
-                                    <div class="progress-bar" role="progressbar" 
-                                         style="width: {{ job.get_average_match_score() }}%"
-                                         aria-valuenow="{{ job.get_average_match_score() }}" 
-                                         aria-valuemin="0" 
-                                         aria-valuemax="100">
-                                        {{ "%.1f"|format(job.get_average_match_score()) }}%
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <a href="{{ url_for('candidates', job_id=job.id) }}" class="btn btn-sm btn-info">View Candidates</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <button id="processAllBtn" class="btn btn-info">
+                <i class="fas fa-cogs"></i> Process All Data
+            </button>
+            <div class="progress mt-3 d-none" id="processAllProgress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
             </div>
+            <div id="processAllStatus" class="mt-2"></div>
         </div>
     </div>
 
-    <!-- Shortlisted Candidates Section -->
+    <!-- Job Listings -->
     <div class="card">
         <div class="card-header">
-            <h5 class="mb-0">Shortlisted Candidates</h5>
+            <h5 class="mb-0">Job Listings</h5>
         </div>
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Candidate</th>
-                            <th>Job</th>
-                            <th>Interview Date</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for s in shortlisted %}
-                        <tr>
-                            <td>{{ s.get_candidate_name() }}</td>
-                            <td>{{ s.get_job_title() }}</td>
-                            <td>{{ s.interview_date.strftime('%Y-%m-%d %H:%M') }}</td>
-                            <td>
-                                <span class="badge bg-{{ 'success' if s.status == 'scheduled' else 'warning' }}">
-                                    {{ s.status }}
-                                </span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-primary" onclick="viewCandidate({{ s.candidate_id }})">
-                                    View CV
+            <div class="row" id="jobListings">
+                {% for job in jobs %}
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ job.title }}</h5>
+                            <p class="card-text">{{ job.description[:200] }}...</p>
+                            <div class="d-flex justify-content-between">
+                                <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-primary">
+                                    <i class="fas fa-users"></i> View Candidates
+                                </a>
+                                <button class="btn btn-success shortlist-btn" data-job-id="{{ job.id }}">
+                                    <i class="fas fa-check"></i> Shortlist
                                 </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
     </div>
 </div>
 
 <!-- Processing Modal -->
-<div class="modal fade" id="processingModal" tabindex="-1">
+<div class="modal fade" id="processingModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Processing Data</h5>
-            </div>
-            <div class="modal-body">
-                <div class="progress mb-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         role="progressbar" style="width: 0%"></div>
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
-                <p id="processingStatus">Initializing...</p>
+                <h5>Processing CVs...</h5>
+                <p id="processingStatus">Please wait while we analyze the CVs.</p>
             </div>
         </div>
     </div>
 </div>
 
-<!-- CV Modal -->
-<div class="modal fade" id="cvModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+<!-- Import CVs Modal -->
+<div class="modal fade" id="importCvsModal" tabindex="-1" aria-labelledby="importCvsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Candidate CV</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="importCvsModalLabel">Import CVs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <h6>Match Score</h6>
-                    <div class="progress">
-                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                <form id="importCvsForm">
+                    <div class="mb-3">
+                        <label for="jobSelect" class="form-label">Select Job</label>
+                        <select class="form-select" id="jobSelect" required>
+                            <option value="">Choose a job...</option>
+                            {% for job in jobs %}
+                            <option value="{{ job.id }}">{{ job.title }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <pre id="cvText" class="mb-0"></pre>
+                    <div class="mb-3">
+                        <label for="cvFiles" class="form-label">Select CVs</label>
+                        <input type="file" class="form-control" id="cvFiles" multiple accept=".pdf" required>
                     </div>
-                </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="importCvsBtn">Import</button>
             </div>
         </div>
     </div>
@@ -169,58 +142,146 @@
 
 {% block scripts %}
 <script>
-function processAllData() {
-    const modal = new bootstrap.Modal(document.getElementById('processingModal'));
-    const progressBar = document.querySelector('#processingModal .progress-bar');
-    const statusText = document.getElementById('processingStatus');
-    modal.show();
+document.addEventListener('DOMContentLoaded', function() {
+    const importJobsForm = document.getElementById('importJobsForm');
+    const importCVsForm = document.getElementById('importCVsForm');
+    const processAllBtn = document.getElementById('processAllBtn');
+    const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
 
-    // Import jobs
-    statusText.textContent = 'Importing jobs...';
-    fetch('/api/import-jobs', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '25%';
-            statusText.textContent = 'Importing CVs...';
-            return fetch('/api/import-cvs/1', { method: 'POST' });
-        })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '50%';
-            statusText.textContent = 'Shortlisting candidates...';
-            return fetch('/api/shortlist-all', { method: 'POST' });
-        })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '100%';
-            statusText.textContent = 'Processing complete!';
-            setTimeout(() => {
-                modal.hide();
+    // Import Jobs
+    importJobsForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const progressBar = document.querySelector('#importJobsProgress .progress-bar');
+        const progressDiv = document.getElementById('importJobsProgress');
+        const statusDiv = document.getElementById('importJobsStatus');
+
+        // Check if file is selected
+        const file = document.getElementById('jobFile').files[0];
+        if (!file) {
+            statusDiv.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i> Please select a file to upload';
+            return;
+        }
+
+        progressDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing jobs...';
+
+        try {
+            const response = await fetch('/api/import-jobs', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                progressBar.style.width = '100%';
+                statusDiv.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                statusDiv.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.error || 'Failed to import jobs'}`;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
+        }
+    });
+
+    // Import CVs
+    document.getElementById('importCvsBtn').addEventListener('click', async function() {
+        const jobId = document.getElementById('jobSelect').value;
+        const files = document.getElementById('cvFiles').files;
+        
+        if (!jobId) {
+            alert('Please select a job');
+            return;
+        }
+        
+        if (!files.length) {
+            alert('Please select at least one CV file');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('job_id', jobId);
+        for (let file of files) {
+            formData.append('files', file);
+        }
+        
+        // Show processing modal
+        const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
+        processingModal.show();
+        
+        try {
+            const response = await fetch('/api/import-cvs', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(result.message);
                 location.reload();
-            }, 1000);
-        })
-        .catch(error => {
-            statusText.textContent = 'Error: ' + error.message;
-            progressBar.classList.add('bg-danger');
-            progressBar.style.width = '100%';
-        });
-}
+            } else {
+                alert(result.message || 'Error importing CVs');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error importing CVs');
+        } finally {
+            processingModal.hide();
+        }
+    });
 
-function viewCandidate(candidateId) {
-    fetch(`/api/candidate/${candidateId}`)
-        .then(response => response.json())
-        .then(data => {
-            const modal = new bootstrap.Modal(document.getElementById('cvModal'));
-            const progressBar = document.querySelector('#cvModal .progress-bar');
-            const cvText = document.getElementById('cvText');
-            
-            progressBar.style.width = `${data.match_score}%`;
-            progressBar.textContent = `${data.match_score}%`;
-            cvText.textContent = data.cv_text;
-            
-            modal.show();
-        })
-        .catch(error => alert('Error loading CV: ' + error.message));
-}
+    // Process All Data
+    processAllBtn.addEventListener('click', async function() {
+        processingModal.show();
+        const statusElement = document.getElementById('processingStatus');
+
+        try {
+            const response = await fetch('/api/process-all', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                statusElement.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
+                setTimeout(() => {
+                    processingModal.hide();
+                    location.reload();
+                }, 1500);
+            } else {
+                statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.message}`;
+            }
+        } catch (error) {
+            statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
+        }
+    });
+
+    // Shortlist Candidates
+    document.querySelectorAll('.shortlist-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const jobId = this.dataset.jobId;
+            const statusElement = document.getElementById('processingStatus');
+
+            processingModal.show();
+            statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Shortlisting candidates...';
+
+            try {
+                const response = await fetch(`/api/shortlist-candidates/${jobId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    statusElement.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
+                    setTimeout(() => {
+                        processingModal.hide();
+                        location.reload();
+                    }, 1500);
+                } else {
+                    statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.message}`;
+                }
+            } catch (error) {
+                statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
+            }
+        });
+    });
+});
 </script>
 {% endblock %} 

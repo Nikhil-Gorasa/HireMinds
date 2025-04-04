@@ -1,152 +1,319 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, current_app
-from database.db import db, Job, Candidate, ShortlistedCandidate
+from database.db import db
+from app.models.job import Job
+from app.models.candidate import Candidate
+from app.models.shortlisted_candidate import ShortlistedCandidate
 from agents.jd_summarizer import store_jd
-from agents.cv_analyzer import store_candidate
+from agents.cv_analyzer import analyze_cv, store_candidate
 from agents.shortlister import shortlist_candidates, get_shortlisted_candidates
-import csv
+from agents.scheduler import schedule_interviews, get_scheduled_interviews
+import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from werkzeug.utils import secure_filename
+import PyPDF2
+import io
+from PyPDF2 import PdfReader
+from agents.summarizer import summarize_job
+from agents.analyzer import analyze_cv
+import json
 
 main = Blueprint('main', __name__)
 
+# Get the absolute path to the uploads directory
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
+ALLOWED_EXTENSIONS = {
+    'jobs': {'xlsx', 'xls', 'csv'},
+    'cvs': {'pdf'}
+}
+
+# Create uploads directory if it doesn't exist
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+    print(f"Created uploads directory at: {UPLOAD_FOLDER}")
+
+def allowed_file(filename, file_type):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS[file_type]
+
+def read_pdf(file):
+    """Extract text from PDF file."""
+    try:
+        pdf_reader = PdfReader(file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    except Exception as e:
+        print(f"Error reading PDF: {str(e)}")
+        return None
+
 def get_dataset_path():
     """Get the path to the dataset directory."""
-    return os.path.join(current_app.root_path, '..', '[Usecase 5] AI-Powered Job Application Screening System Dataset')
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), 
+                       '[Usecase 5] AI-Powered Job Application Screening System Dataset')
 
 @main.route('/')
 def index():
+    """Render the dashboard with jobs, candidates, and shortlisted candidates."""
     jobs = Job.query.all()
     candidates = Candidate.query.all()
     shortlisted = ShortlistedCandidate.query.all()
-    return render_template('dashboard.html', 
-                         jobs=jobs, 
-                         candidates=candidates, 
-                         shortlisted=shortlisted,
-                         interviews=shortlisted)
+    return render_template('dashboard.html', jobs=jobs, candidates=candidates, shortlisted=shortlisted)
 
 @main.route('/jobs')
 def jobs():
+    """Render the jobs page."""
     jobs = Job.query.all()
     return render_template('jobs.html', jobs=jobs)
 
 @main.route('/candidates/<int:job_id>')
 def candidates(job_id):
+    """Render the candidates page for a specific job."""
     job = Job.query.get_or_404(job_id)
     candidates = Candidate.query.filter_by(job_id=job_id).all()
-    return render_template('candidates.html', job=job, candidates=candidates)
+    shortlisted = get_shortlisted_candidates(job_id)
+    return render_template('candidates.html', job=job, candidates=candidates, shortlisted=shortlisted)
 
 @main.route('/api/import-jobs', methods=['POST'])
 def import_jobs():
+    """Import jobs from the uploaded Excel file."""
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
+    
+    if not allowed_file(file.filename, 'jobs'):
+        return jsonify({'success': False, 'error': 'Invalid file type. Please upload an Excel or CSV file.'}), 400
+    
     try:
-        # Clear existing jobs
-        Job.query.delete()
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        
+        if filename.endswith('.csv'):
+            # Try different encodings
+            encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+            df = None
+            
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(filepath, encoding=encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if df is None:
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not read the CSV file. Please ensure it is properly encoded.'
+                }), 400
+        else:
+            df = pd.read_excel(filepath)
+        
+        # Check for required columns
+        required_columns = ['Job Title', 'Job Description']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return jsonify({
+                'success': False,
+                'error': f'Missing required columns: {", ".join(missing_columns)}'
+            }), 400
+        
+        jobs_created = 0
+        for _, row in df.iterrows():
+            if pd.isna(row['Job Description']):
+                continue
+                
+            # Clean the text by replacing special characters
+            title = str(row['Job Title']).replace('', "'").replace('', "'") if not pd.isna(row['Job Title']) else 'Untitled Job'
+            description = str(row['Job Description']).replace('', "'").replace('', "'")
+            
+            # Extract requirements from description if not provided
+            requirements = str(row.get('Requirements', description))
+            
+            job = Job(
+                title=title,
+                description=description,
+                requirements=requirements,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.session.add(job)
+            jobs_created += 1
+        
         db.session.commit()
-        
-        # Read job descriptions from CSV
-        csv_path = os.path.join(get_dataset_path(), 'job_description.csv')
-        
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                job = Job(
-                    title=row['title'],
-                    description=row['description'],
-                    summary=row.get('summary', '')
-                )
-                db.session.add(job)
-        
-        db.session.commit()
-        return jsonify({'message': 'Jobs imported successfully'})
+        os.remove(filepath)
+        return jsonify({
+            'success': True,
+            'message': f'Successfully imported {jobs_created} jobs'
+        })
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        print(f"Error importing jobs: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@main.route('/api/import-cvs/<int:job_id>', methods=['POST'])
-def import_cvs(job_id):
+@main.route('/api/import-cvs', methods=['POST'])
+def import_cvs():
+    if 'files' not in request.files:
+        return jsonify({
+            'success': False,
+            'message': 'No files provided'
+        })
+    
+    files = request.files.getlist('files')
+    if not files or files[0].filename == '':
+        return jsonify({
+            'success': False,
+            'message': 'No files selected'
+        })
+    
+    job_id = request.form.get('job_id')
+    if not job_id:
+        return jsonify({
+            'success': False,
+            'message': 'No job ID provided'
+        })
+    
+    job = Job.query.get(job_id)
+    if not job:
+        return jsonify({
+            'success': False,
+            'message': 'Job not found'
+        })
+    
+    processed_count = 0
+    for file in files:
+        if file and file.filename.endswith('.pdf'):
+            try:
+                # Read PDF file
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text()
+                
+                # Analyze CV
+                analysis = analyze_cv(text, job.description)
+                
+                # Create candidate
+                candidate = Candidate(
+                    name=file.filename.replace('.pdf', ''),
+                    cv_text=text,
+                    analysis=json.dumps(analysis),
+                    match_score=analysis.get('match_score', 0.0),
+                    job_id=job_id
+                )
+                db.session.add(candidate)
+                processed_count += 1
+                
+            except Exception as e:
+                print(f"Error processing file {file.filename}: {str(e)}")
+                continue
+    
     try:
-        # Clear existing candidates for this job
-        Candidate.query.filter_by(job_id=job_id).delete()
         db.session.commit()
-        
-        # Read CVs from directory
-        cv_dir = os.path.join(get_dataset_path(), 'CVs1')
-        
-        for filename in os.listdir(cv_dir):
-            if filename.endswith('.txt'):
-                with open(os.path.join(cv_dir, filename), 'r', encoding='utf-8') as f:
-                    cv_text = f.read()
+        return jsonify({
+            'success': True,
+            'message': f'Successfully processed {processed_count} CVs'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error saving candidates: {str(e)}'
+        })
+
+@main.route('/api/import-all-cvs', methods=['POST'])
+def import_all_cvs():
+    if 'files' not in request.files:
+        return jsonify({
+            'success': False,
+            'message': 'No files provided'
+        })
+    
+    files = request.files.getlist('files')
+    if not files or files[0].filename == '':
+        return jsonify({
+            'success': False,
+            'message': 'No files selected'
+        })
+    
+    processed_count = 0
+    for file in files:
+        if file and file.filename.endswith('.pdf'):
+            try:
+                # Read PDF file
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text()
+                
+                # Get all jobs
+                jobs = Job.query.all()
+                
+                for job in jobs:
+                    # Analyze CV against each job
+                    analysis = analyze_cv(text, job.description)
+                    
+                    # Create candidate
                     candidate = Candidate(
-                        name=filename.replace('.txt', ''),
-                        cv_text=cv_text,
-                        job_id=job_id,
-                        match_score=0.0  # Will be updated by AI processing
+                        name=file.filename.replace('.pdf', ''),
+                        cv_text=text,
+                        analysis=json.dumps(analysis),
+                        match_score=analysis.get('match_score', 0.0),
+                        job_id=job.id
                     )
                     db.session.add(candidate)
-        
+                    processed_count += 1
+                
+            except Exception as e:
+                print(f"Error processing file {file.filename}: {str(e)}")
+                continue
+    
+    try:
         db.session.commit()
-        return jsonify({'message': 'CVs imported successfully'})
+        return jsonify({
+            'success': True,
+            'message': f'Successfully processed {processed_count} CVs'
+        })
     except Exception as e:
         db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error saving candidates: {str(e)}'
+        })
+
+@main.route('/api/shortlist-candidates/<int:job_id>', methods=['POST'])
+def shortlist_candidates_route(job_id):
+    """Shortlist candidates for a specific job."""
+    try:
+        count = shortlist_candidates(job_id)
+        return jsonify({
+            'message': f'Successfully shortlisted {count} candidates'
+        })
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @main.route('/api/shortlist-all', methods=['POST'])
-def shortlist_all():
+def shortlist_all_candidates():
+    """Shortlist candidates for all jobs."""
+    jobs = Job.query.all()
+    total_shortlisted = 0
+    
     try:
-        # Clear all existing shortlisted candidates
-        ShortlistedCandidate.query.delete()
-        db.session.commit()
-        
-        total_shortlisted = 0
-        jobs = Job.query.all()
-        
         for job in jobs:
-            candidates = Candidate.query.filter_by(job_id=job.id).all()
-            for candidate in candidates:
-                if candidate.match_score >= 80.0:  # 80% match threshold
-                    shortlisted = ShortlistedCandidate(
-                        candidate_id=candidate.id,
-                        job_id=job.id,
-                        interview_date=datetime.utcnow(),
-                        status='scheduled'
-                    )
-                    db.session.add(shortlisted)
-                    total_shortlisted += 1
+            count = shortlist_candidates(job.id)
+            total_shortlisted += count
         
-        db.session.commit()
-        return jsonify({'message': f'Shortlisted {total_shortlisted} candidates'})
+        return jsonify({
+            'message': f'Successfully shortlisted {total_shortlisted} candidates across all jobs'
+        })
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-@main.route('/api/shortlist/<int:job_id>', methods=['POST'])
-def shortlist_job(job_id):
-    try:
-        # Clear existing shortlisted candidates for this job
-        ShortlistedCandidate.query.filter_by(job_id=job_id).delete()
-        db.session.commit()
-        
-        shortlisted_count = 0
-        candidates = Candidate.query.filter_by(job_id=job_id).all()
-        
-        for candidate in candidates:
-            if candidate.match_score >= 80.0:  # 80% match threshold
-                shortlisted = ShortlistedCandidate(
-                    candidate_id=candidate.id,
-                    job_id=job_id,
-                    interview_date=datetime.utcnow(),
-                    status='scheduled'
-                )
-                db.session.add(shortlisted)
-                shortlisted_count += 1
-        
-        db.session.commit()
-        return jsonify({'message': f'Shortlisted {shortlisted_count} candidates'})
-    except Exception as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @main.route('/api/shortlisted/<int:job_id>')
 def get_shortlisted(job_id):
+    """Get shortlisted candidates for a specific job."""
     shortlisted = ShortlistedCandidate.query.filter_by(job_id=job_id).all()
     return jsonify([{
         'id': s.id,
@@ -155,15 +322,74 @@ def get_shortlisted(job_id):
         'status': s.status
     } for s in shortlisted])
 
-@main.route('/api/candidate/<int:candidate_id>')
-def get_candidate(candidate_id):
+@main.route('/api/candidate-cv/<int:candidate_id>')
+def get_candidate_cv(candidate_id):
+    """Get candidate details including CV text and match score."""
     candidate = Candidate.query.get_or_404(candidate_id)
     return jsonify({
-        'id': candidate.id,
-        'name': candidate.name,
         'cv_text': candidate.cv_text,
-        'match_score': candidate.match_score,
-        'status': candidate.status,
-        'is_shortlisted': candidate.is_shortlisted(),
-        'interview_date': candidate.get_interview_date().strftime('%Y-%m-%d %H:%M:%S') if candidate.get_interview_date() else None
-    }) 
+        'analysis': candidate.analysis
+    })
+
+@main.route('/api/schedule-interviews/<int:job_id>', methods=['POST'])
+def schedule_interviews_route(job_id):
+    try:
+        count = schedule_interviews(job_id)
+        return jsonify({'success': True, 'message': f'Successfully scheduled {count} interviews'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error scheduling interviews: {str(e)}'})
+
+@main.route('/api/process-all', methods=['POST'])
+def process_all():
+    try:
+        # Import jobs
+        jobs_response = import_jobs()
+        if not jobs_response.json['success']:
+            return jobs_response
+        
+        # Import CVs
+        cvs_response = import_all_cvs()
+        if not cvs_response.json['success']:
+            return cvs_response
+        
+        # Shortlist candidates
+        shortlist_response = shortlist_all_candidates()
+        if not shortlist_response.json['success']:
+            return shortlist_response
+        
+        return jsonify({'success': True, 'message': 'Successfully processed all data'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing data: {str(e)}'})
+
+@main.route('/api/delete-job/<int:job_id>', methods=['DELETE'])
+def delete_job(job_id):
+    """Delete a specific job and its associated candidates."""
+    try:
+        job = Job.query.get_or_404(job_id)
+        # Delete associated candidates
+        Candidate.query.filter_by(job_id=job_id).delete()
+        # Delete associated shortlisted candidates
+        ShortlistedCandidate.query.filter_by(job_id=job_id).delete()
+        # Delete the job
+        db.session.delete(job)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Job deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@main.route('/api/delete-all-jobs', methods=['DELETE'])
+def delete_all_jobs():
+    """Delete all jobs and their associated candidates."""
+    try:
+        # Delete all candidates
+        Candidate.query.delete()
+        # Delete all shortlisted candidates
+        ShortlistedCandidate.query.delete()
+        # Delete all jobs
+        Job.query.delete()
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'All jobs deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500 

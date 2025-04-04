@@ -1,60 +1,127 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Job Listings</h2>
-        <div>
-            <button class="btn btn-primary me-2" onclick="importJobs()">
-                <i class="fas fa-file-import"></i> Import Jobs
-            </button>
-            <button class="btn btn-success" onclick="processAllData()">
-                <i class="fas fa-cogs"></i> Process All Data
+        <h1>Job Listings</h1>
+        <div class="btn-group">
+            <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary">
+                <i class="fas fa-chart-line"></i> Dashboard
+            </a>
+            <a href="{{ url_for('main.jobs') }}" class="btn btn-primary">
+                <i class="fas fa-briefcase"></i> Jobs
+            </a>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-file-excel text-success"></i> Import Jobs
+                    </h5>
+                    <form id="jobImportForm" class="mb-3">
+                        <div class="mb-3">
+                            <label for="jobFile" class="form-label">Select Job Descriptions File</label>
+                            <input type="file" class="form-control" id="jobFile" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">Excel or CSV file with a column named 'job_description'</div>
+                        </div>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-upload"></i> Import Jobs
+                        </button>
+                    </form>
+                    <div id="jobImportProgress" class="progress d-none">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div id="jobImportStatus" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-file-pdf text-danger"></i> Import All CVs
+                    </h5>
+                    <button id="importAllCVsBtn" class="btn btn-danger">
+                        <i class="fas fa-upload"></i> Import All CVs
+                    </button>
+                    <div id="importAllCVsProgress" class="progress mt-3 d-none">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div id="importAllCVsStatus" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-cogs text-primary"></i> Process All Data
+                    </h5>
+                    <button id="processAllBtn" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Process All Data
+                    </button>
+                    <div id="processAllProgress" class="progress mt-3 d-none">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div id="processAllStatus" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <h2>Job Listings</h2>
+        </div>
+        <div class="col-md-6 text-end">
+            <button id="deleteAllJobs" class="btn btn-danger">
+                <i class="fas fa-trash"></i> Delete All Jobs
             </button>
         </div>
     </div>
 
-    <!-- Job Listings -->
     <div class="row">
         {% for job in jobs %}
         <div class="col-md-6 mb-4">
             <div class="card h-100">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0">{{ job.title }}</h5>
-                </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Description</h6>
-                            <p class="text-muted">{{ job.description[:200] }}...</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>AI-Generated Summary</h6>
-                            <p class="text-muted">{{ job.summary[:200] }}...</p>
-                        </div>
-                    </div>
-                    <div class="mt-3">
-                        <span class="badge bg-info me-2">
-                            <i class="fas fa-users"></i> {{ job.candidates|length }} Candidates
-                        </span>
-                        <span class="badge bg-success me-2">
-                            <i class="fas fa-check"></i> {{ job.shortlisted_candidates|length if job.shortlisted_candidates else 0 }} Shortlisted
-                        </span>
-                        <span class="badge bg-secondary">
-                            <i class="fas fa-calendar"></i> Posted: {{ job.created_at.strftime('%Y-%m-%d') }}
-                        </span>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <div class="btn-group w-100">
-                        <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-info">
-                            <i class="fas fa-users"></i> View Candidates
-                        </a>
-                        <button class="btn btn-success" onclick="shortlistCandidates({{ job.id }})">
-                            <i class="fas fa-check"></i> Shortlist
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5 class="card-title">{{ job.title }}</h5>
+                        <button class="btn btn-danger btn-sm delete-job" data-job-id="{{ job.id }}">
+                            <i class="fas fa-trash"></i>
                         </button>
                     </div>
+                    <p class="card-text">{{ job.description[:200] }}...</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-primary me-2">
+                                <i class="fas fa-users"></i> {{ job.get_candidate_count() }} Candidates
+                            </span>
+                            <span class="badge bg-success">
+                                <i class="fas fa-check"></i> {{ job.get_shortlisted_count() }} Shortlisted
+                            </span>
+                        </div>
+                        <div>
+                            <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-eye"></i> View
+                            </a>
+                            <button class="btn btn-success btn-sm shortlist-btn" data-job-id="{{ job.id }}">
+                                <i class="fas fa-check"></i> Shortlist
+                            </button>
+                        </div>
+                    </div>
                 </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-md-12">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> No jobs found. Please import jobs first.
             </div>
         </div>
         {% endfor %}
@@ -68,11 +135,30 @@
             <div class="modal-header">
                 <h5 class="modal-title">Processing Data</h5>
             </div>
-            <div class="modal-body">
-                <div class="progress mb-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
-                <p id="processingStatus">Initializing...</p>
+                <p class="mt-3" id="processingStatus">Please wait while we process your data...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this job? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
             </div>
         </div>
     </div>
@@ -81,71 +167,200 @@
 
 {% block scripts %}
 <script>
-function importJobs() {
-    fetch('/api/import-jobs', {
-        method: 'POST'
-    })
-    .then(response => response.json())
-    .then(data => {
-        alert(data.message);
-        location.reload();
-    })
-    .catch(error => {
-        alert('Error importing jobs: ' + error);
-    });
-}
+document.addEventListener('DOMContentLoaded', function() {
+    const jobImportForm = document.getElementById('jobImportForm');
+    const jobImportProgress = document.getElementById('jobImportProgress');
+    const jobImportStatus = document.getElementById('jobImportStatus');
+    const importAllCVsBtn = document.getElementById('importAllCVsBtn');
+    const importAllCVsProgress = document.getElementById('importAllCVsProgress');
+    const importAllCVsStatus = document.getElementById('importAllCVsStatus');
+    const processAllBtn = document.getElementById('processAllBtn');
+    const processAllProgress = document.getElementById('processAllProgress');
+    const processAllStatus = document.getElementById('processAllStatus');
+    const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
+    const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    let jobToDelete = null;
 
-function shortlistCandidates(jobId) {
-    fetch(`/api/shortlist/${jobId}`, {
-        method: 'POST'
-    })
-    .then(response => response.json())
-    .then(data => {
-        alert(data.message);
-        location.reload();
-    })
-    .catch(error => {
-        alert('Error shortlisting candidates: ' + error);
+    jobImportForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const fileInput = document.getElementById('jobFile');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            alert('Please select an Excel or CSV file');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            jobImportProgress.classList.remove('d-none');
+            jobImportStatus.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Importing jobs...</div>';
+            
+            const response = await fetch('/api/import-jobs', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                jobImportStatus.innerHTML = `<div class="alert alert-success"><i class="fas fa-check"></i> ${result.message}</div>`;
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                jobImportStatus.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ${result.error}</div>`;
+            }
+        } catch (error) {
+            jobImportStatus.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
+        } finally {
+            jobImportProgress.classList.add('d-none');
+        }
     });
-}
-
-function processAllData() {
-    const modal = new bootstrap.Modal(document.getElementById('processingModal'));
-    const progressBar = document.querySelector('.progress-bar');
-    const statusText = document.getElementById('processingStatus');
     
-    modal.show();
+    importAllCVsBtn.addEventListener('click', async function() {
+        try {
+            processingModal.show();
+            document.querySelector('#processingStatus').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing all CVs...</div>';
+            
+            const response = await fetch('/api/import-all-cvs', {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                document.querySelector('#processingStatus').innerHTML = `<div class="alert alert-success"><i class="fas fa-check"></i> ${result.message}</div>`;
+                document.querySelector('.modal-dialog .progress-bar').style.width = '100%';
+                setTimeout(() => {
+                    processingModal.hide();
+                    window.location.reload();
+                }, 2000);
+            } else {
+                throw new Error(result.error || 'Failed to import CVs');
+            }
+        } catch (error) {
+            document.querySelector('#modalStatus').innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
+        }
+    });
     
-    // Step 1: Import Jobs
-    statusText.textContent = 'Importing jobs...';
-    fetch('/api/import-jobs', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '33%';
-            statusText.textContent = 'Importing CVs...';
-            return fetch('/api/import-cvs', { method: 'POST' });
-        })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '66%';
-            statusText.textContent = 'Shortlisting candidates...';
-            return fetch('/api/shortlist-all', { method: 'POST' });
-        })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '100%';
-            statusText.textContent = 'Processing complete!';
+    processAllBtn.addEventListener('click', async function() {
+        try {
+            progressModal.show();
+            document.querySelector('#modalStatus').innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Processing all data...</div>';
+            
+            // Import all CVs
+            const importResponse = await fetch('/api/import-all-cvs', {
+                method: 'POST'
+            });
+            const importResult = await importResponse.json();
+            
+            if (!importResponse.ok) {
+                throw new Error(importResult.error || 'Failed to import CVs');
+            }
+            
+            document.querySelector('#modalStatus').innerHTML += '<br><div class="alert alert-success"><i class="fas fa-check"></i> CVs imported successfully.</div>';
+            document.querySelector('.modal-dialog .progress-bar').style.width = '50%';
+            
+            // Shortlist all candidates
+            const shortlistResponse = await fetch('/api/shortlist-all', {
+                method: 'POST'
+            });
+            const shortlistResult = await shortlistResponse.json();
+            
+            if (!shortlistResponse.ok) {
+                throw new Error(shortlistResult.error || 'Failed to shortlist candidates');
+            }
+            
+            document.querySelector('#modalStatus').innerHTML += `<br><div class="alert alert-success"><i class="fas fa-check"></i> ${shortlistResult.message}</div>`;
+            document.querySelector('.modal-dialog .progress-bar').style.width = '100%';
+            
             setTimeout(() => {
-                modal.hide();
-                location.reload();
-            }, 1000);
-        })
-        .catch(error => {
-            statusText.textContent = 'Error: ' + error;
-            progressBar.style.width = '0%';
-            progressBar.classList.remove('bg-success');
-            progressBar.classList.add('bg-danger');
+                progressModal.hide();
+                window.location.reload();
+            }, 2000);
+        } catch (error) {
+            document.querySelector('#modalStatus').innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
+        }
+    });
+
+    // Delete individual job
+    document.querySelectorAll('.delete-job').forEach(button => {
+        button.addEventListener('click', function() {
+            jobToDelete = this.dataset.jobId;
+            deleteConfirmModal.show();
         });
-}
+    });
+
+    // Confirm delete
+    document.getElementById('confirmDelete').addEventListener('click', async function() {
+        if (!jobToDelete) return;
+
+        try {
+            const response = await fetch(`/api/delete-job/${jobToDelete}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error deleting job: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error deleting job: ' + error.message);
+        }
+    });
+
+    // Delete all jobs
+    document.getElementById('deleteAllJobs').addEventListener('click', async function() {
+        if (!confirm('Are you sure you want to delete all jobs? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/delete-all-jobs', {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error deleting jobs: ' + data.error);
+            }
+        } catch (error) {
+            alert('Error deleting jobs: ' + error.message);
+        }
+    });
+
+    // Shortlist Candidates
+    document.querySelectorAll('.shortlist-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const jobId = this.dataset.jobId;
+            const statusElement = document.getElementById('processingStatus');
+
+            processingModal.show();
+            statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Shortlisting candidates...';
+
+            try {
+                const response = await fetch(`/api/shortlist-candidates/${jobId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    statusElement.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
+                    setTimeout(() => {
+                        processingModal.hide();
+                        location.reload();
+                    }, 1500);
+                } else {
+                    statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.message}`;
+                }
+            } catch (error) {
+                statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
+            }
+        });
+    });
+});
 </script>
 {% endblock %} 

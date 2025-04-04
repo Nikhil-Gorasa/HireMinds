@@ -26,15 +26,20 @@ This project implements an AI-powered system for screening job applications usin
 
 1. Clone the repository
 2. Create a virtual environment:
+
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
+
 3. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
+
 4. Initialize the database:
+
    ```bash
    python init_db.py
    ```
@@ -42,9 +47,11 @@ This project implements an AI-powered system for screening job applications usin
 ## Usage
 
 1. Start the Flask application:
+
    ```bash
    python run.py
    ```
+
 2. Open your browser and navigate to `http://localhost:5000`
 3. Import job descriptions using Excel/CSV files
 4. Import candidate CVs using PDF files
@@ -103,10 +110,4 @@ This project implements an AI-powered system for screening job applications usin
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-
-
-
-
-
+This project is licensed under the MIT License - see the LICENSE file for details. 
