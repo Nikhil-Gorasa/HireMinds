@@ -2,137 +2,228 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid py-4">
+    <!-- Welcome Section -->
+    <div class="row mb-4 animate-fade-in">
+        <div class="col-12">
+            <h1 class="display-4 mb-0">Welcome to HR Assistant</h1>
+            <p class="text-muted">Your AI-powered recruitment companion</p>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 animate-fade-in" style="animation-delay: 0.1s">
+            <div class="stat-card">
+                <div class="stat-value">{{ jobs|length }}</div>
+                <div class="stat-label">Active Jobs</div>
+                <i class="fas fa-briefcase position-absolute top-0 end-0 m-3 opacity-25 fa-2x"></i>
+            </div>
+        </div>
+        <div class="col-md-3 animate-fade-in" style="animation-delay: 0.2s">
+            <div class="stat-card" style="background: linear-gradient(135deg, var(--secondary-color), #059669);">
+                <div class="stat-value">{{ candidates|length }}</div>
+                <div class="stat-label">Total Candidates</div>
+                <i class="fas fa-users position-absolute top-0 end-0 m-3 opacity-25 fa-2x"></i>
+            </div>
+        </div>
+        <div class="col-md-3 animate-fade-in" style="animation-delay: 0.3s">
+            <div class="stat-card" style="background: linear-gradient(135deg, var(--accent-color), #d97706);">
+                <div class="stat-value">{{ shortlisted|length }}</div>
+                <div class="stat-label">Shortlisted</div>
+                <i class="fas fa-check-circle position-absolute top-0 end-0 m-3 opacity-25 fa-2x"></i>
+            </div>
+        </div>
+        <div class="col-md-3 animate-fade-in" style="animation-delay: 0.4s">
+            <div class="stat-card" style="background: linear-gradient(135deg, var(--info-color), #2563eb);">
+                <div class="stat-value">{{ shortlisted|selectattr('status', 'equalto', 'Scheduled')|list|length }}</div>
+                <div class="stat-label">Scheduled Interviews</div>
+                <i class="fas fa-calendar-check position-absolute top-0 end-0 m-3 opacity-25 fa-2x"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity and Charts -->
     <div class="row">
-        <div class="col-md-12">
-            <h2 class="mb-4">Dashboard</h2>
-        </div>
-    </div>
-
-    <!-- Job Import Section -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Import Jobs</h5>
-        </div>
-        <div class="card-body">
-            <form id="importJobsForm" enctype="multipart/form-data">
-                <div class="mb-3">
-                    <label for="jobFile" class="form-label">Select Excel/CSV File</label>
-                    <input type="file" class="form-control" id="jobFile" name="file" accept=".xlsx,.xls,.csv" required>
-                    <div class="form-text">File must contain a 'job_description' column</div>
+        <!-- Recent Jobs -->
+        <div class="col-md-6 mb-4 animate-slide-in">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Recent Jobs</h5>
+                    <a href="{{ url_for('main.jobs') }}" class="btn btn-sm btn-primary">View All</a>
                 </div>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-file-import"></i> Import Jobs
-                </button>
-            </form>
-            <div class="progress mt-3 d-none" id="importJobsProgress">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-            </div>
-            <div id="importJobsStatus" class="mt-2"></div>
-        </div>
-    </div>
-
-    <!-- CV Import Section -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Import CVs</h5>
-        </div>
-        <div class="card-body">
-            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importCvsModal">
-                <i class="fas fa-file-upload"></i> Import CVs
-            </button>
-        </div>
-    </div>
-
-    <!-- Processing Section -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Process Data</h5>
-        </div>
-        <div class="card-body">
-            <button id="processAllBtn" class="btn btn-info">
-                <i class="fas fa-cogs"></i> Process All Data
-            </button>
-            <div class="progress mt-3 d-none" id="processAllProgress">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-            </div>
-            <div id="processAllStatus" class="mt-2"></div>
-        </div>
-    </div>
-
-    <!-- Job Listings -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0">Job Listings</h5>
-        </div>
-        <div class="card-body">
-            <div class="row" id="jobListings">
-                {% for job in jobs %}
-                <div class="col-md-6 mb-4">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h5 class="card-title">{{ job.title | replace("'''", "") }}</h5>
-                            <p class="card-text">{{ job.description | replace("'''", "") | truncate(200) }}</p>
-                            <div class="d-flex justify-content-between">
-                                <a href="{{ url_for('main.candidates', job_id=job.id) }}" class="btn btn-primary">
-                                    <i class="fas fa-users"></i> View Candidates
-                                </a>
-                                <button class="btn btn-success shortlist-btn" data-job-id="{{ job.id }}">
-                                    <i class="fas fa-check"></i> Shortlist
-                                </button>
-                            </div>
-                        </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Candidates</th>
+                                    <th>Shortlisted</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for job in jobs[:5] %}
+                                <tr>
+                                    <td>{{ job.title }}</td>
+                                    <td>{{ job.candidates|length }}</td>
+                                    <td>{{ job.get_shortlisted_count() }}</td>
+                                    <td>
+                                        <span class="badge {% if job.candidates|length > 0 %}bg-success{% else %}bg-warning{% endif %}">
+                                            {{ 'Active' if job.candidates|length > 0 else 'Pending' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                {% endfor %}
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Processing Modal -->
-<div class="modal fade" id="processingModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-body text-center">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
+        <!-- Recent Candidates -->
+        <div class="col-md-6 mb-4 animate-slide-in" style="animation-delay: 0.2s">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Recent Candidates</h5>
+                    <a href="{{ url_for('main.candidates', job_id=jobs[0].id if jobs else 0) }}" class="btn btn-sm btn-primary">View All</a>
                 </div>
-                <h5>Processing CVs...</h5>
-                <p id="processingStatus">Please wait while we analyze the CVs.</p>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Job</th>
+                                    <th>Match Score</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for candidate in candidates[:5] %}
+                                <tr>
+                                    <td>{{ candidate.name }}</td>
+                                    <td>{{ candidate.job.title }}</td>
+                                    <td>
+                                        <div class="progress" style="height: 6px;">
+                                            <div class="progress-bar" role="progressbar" 
+                                                 style="width: {{ (candidate.match_score * 100)|round|int }}%"
+                                                 aria-valuenow="{{ (candidate.match_score * 100)|round|int }}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">{{ (candidate.match_score * 100)|round|int }}%</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if candidate.shortlisted_candidate %}bg-success{% else %}bg-warning{% endif %}">
+                                            {{ 'Shortlisted' if candidate.shortlisted_candidate else 'Pending' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upcoming Interviews -->
+        <div class="col-12 animate-slide-in" style="animation-delay: 0.4s">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Upcoming Interviews</h5>
+                    <a href="{{ url_for('main.interviews') }}" class="btn btn-sm btn-primary">View All</a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Candidate</th>
+                                    <th>Job</th>
+                                    <th>Date & Time</th>
+                                    <th>Match Score</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set scheduled_interviews = shortlisted|selectattr('status', 'equalto', 'Scheduled')|list %}
+                                {% set sorted_interviews = scheduled_interviews|sort(attribute='interview_date') %}
+                                {% for interview in sorted_interviews[:5] %}
+                                <tr>
+                                    <td>{{ interview.candidate.name }}</td>
+                                    <td>{{ interview.job.title }}</td>
+                                    <td>{{ interview.interview_date.strftime('%A, %B %d, %Y at %I:%M %p') }}</td>
+                                    <td>
+                                        <span class="badge {% if interview.candidate.match_score >= 0.7 %}bg-success{% elif interview.candidate.match_score >= 0.45 %}bg-warning{% else %}bg-danger{% endif %}">
+                                            {{ (interview.candidate.match_score * 100)|round|int }}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info view-cv" data-candidate-id="{{ interview.candidate.id }}">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-warning reschedule-interview" data-interview-id="{{ interview.id }}">
+                                            <i class="fas fa-calendar-alt"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger cancel-interview" data-interview-id="{{ interview.id }}">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Import CVs Modal -->
-<div class="modal fade" id="importCvsModal" tabindex="-1" aria-labelledby="importCvsModalLabel" aria-hidden="true">
+<!-- CV Modal -->
+<div class="modal fade" id="cvModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">CV Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- CV content will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reschedule Modal -->
+<div class="modal fade" id="rescheduleModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="importCvsModalLabel">Import CVs</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">Reschedule Interview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="importCvsForm">
+                <form id="rescheduleForm">
+                    <input type="hidden" id="interviewId">
                     <div class="mb-3">
-                        <label for="jobSelect" class="form-label">Select Job</label>
-                        <select class="form-select" id="jobSelect" required>
-                            <option value="">Choose a job...</option>
-                            {% for job in jobs %}
-                            <option value="{{ job.id }}">{{ job.title | replace("'''", "") | replace('"', '') }}</option>
-                            {% endfor %}
-                        </select>
+                        <label for="newDate" class="form-label">New Date</label>
+                        <input type="date" class="form-control" id="newDate" required>
                     </div>
                     <div class="mb-3">
-                        <label for="cvFiles" class="form-label">Select CVs</label>
-                        <input type="file" class="form-control" id="cvFiles" multiple accept=".pdf" required>
+                        <label for="newTime" class="form-label">New Time</label>
+                        <input type="time" class="form-control" id="newTime" required>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="importCvsBtn">Import</button>
+                <button type="button" class="btn btn-primary" id="confirmReschedule">Save Changes</button>
             </div>
         </div>
     </div>
@@ -143,145 +234,122 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const importJobsForm = document.getElementById('importJobsForm');
-    const importCVsForm = document.getElementById('importCVsForm');
-    const processAllBtn = document.getElementById('processAllBtn');
-    const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
+    const rescheduleModal = new bootstrap.Modal(document.getElementById('rescheduleModal'));
+    const cvModal = new bootstrap.Modal(document.getElementById('cvModal'));
 
-    // Import Jobs
-    importJobsForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const progressBar = document.querySelector('#importJobsProgress .progress-bar');
-        const progressDiv = document.getElementById('importJobsProgress');
-        const statusDiv = document.getElementById('importJobsStatus');
+    // Set default date to tomorrow for the date picker
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('newDate').min = tomorrow.toISOString().split('T')[0];
+    document.getElementById('newDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('newTime').value = '09:00';
 
-        // Check if file is selected
-        const file = document.getElementById('jobFile').files[0];
-        if (!file) {
-            statusDiv.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i> Please select a file to upload';
+    // Handle reschedule button clicks
+    document.querySelectorAll('.reschedule-interview').forEach(button => {
+        button.addEventListener('click', function() {
+            document.getElementById('interviewId').value = this.dataset.interviewId;
+            rescheduleModal.show();
+        });
+    });
+
+    // Handle reschedule confirmation
+    document.getElementById('confirmReschedule').addEventListener('click', async function() {
+        const interviewId = document.getElementById('interviewId').value;
+        const newDate = document.getElementById('newDate').value;
+        const newTime = document.getElementById('newTime').value;
+
+        if (!newDate || !newTime) {
+            showAlert('danger', 'Please select both date and time');
             return;
         }
 
-        progressDiv.classList.remove('d-none');
-        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing jobs...';
-
         try {
-            const response = await fetch('/api/import-jobs', {
+            const response = await fetch(`/api/reschedule-interview/${interviewId}`, {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    newDateTime: `${newDate}T${newTime}`
+                })
             });
-            const data = await response.json();
 
+            const data = await response.json();
             if (data.success) {
-                progressBar.style.width = '100%';
-                statusDiv.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
+                showAlert('success', 'Interview rescheduled successfully');
                 setTimeout(() => location.reload(), 1500);
             } else {
-                statusDiv.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.error || 'Failed to import jobs'}`;
+                throw new Error(data.error);
             }
         } catch (error) {
-            statusDiv.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
+            showAlert('danger', `Failed to reschedule: ${error.message}`);
         }
+        rescheduleModal.hide();
     });
 
-    // Import CVs
-    document.getElementById('importCvsBtn').addEventListener('click', async function() {
-        const jobId = document.getElementById('jobSelect').value;
-        const files = document.getElementById('cvFiles').files;
-        
-        if (!jobId) {
-            alert('Please select a job');
-            return;
-        }
-        
-        if (!files.length) {
-            alert('Please select at least one CV file');
-            return;
-        }
-        
-        const formData = new FormData();
-        formData.append('job_id', jobId);
-        for (let file of files) {
-            formData.append('files', file);
-        }
-        
-        // Show processing modal
-        const processingModal = new bootstrap.Modal(document.getElementById('processingModal'));
-        processingModal.show();
-        
-        try {
-            const response = await fetch('/api/import-cvs', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                alert(result.message);
-                location.reload();
-            } else {
-                alert(result.message || 'Error importing CVs');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('Error importing CVs');
-        } finally {
-            processingModal.hide();
-        }
-    });
-
-    // Process All Data
-    processAllBtn.addEventListener('click', async function() {
-        processingModal.show();
-        const statusElement = document.getElementById('processingStatus');
-
-        try {
-            const response = await fetch('/api/process-all', { method: 'POST' });
-            const data = await response.json();
-
-            if (data.success) {
-                statusElement.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
-                setTimeout(() => {
-                    processingModal.hide();
-                    location.reload();
-                }, 1500);
-            } else {
-                statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.message}`;
-            }
-        } catch (error) {
-            statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
-        }
-    });
-
-    // Shortlist Candidates
-    document.querySelectorAll('.shortlist-btn').forEach(button => {
+    // Handle cancel interview
+    document.querySelectorAll('.cancel-interview').forEach(button => {
         button.addEventListener('click', async function() {
-            const jobId = this.dataset.jobId;
-            const statusElement = document.getElementById('processingStatus');
+            if (!confirm('Are you sure you want to cancel this interview?')) return;
 
-            processingModal.show();
-            statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Shortlisting candidates...';
-
+            const interviewId = this.dataset.interviewId;
             try {
-                const response = await fetch(`/api/shortlist-candidates/${jobId}`, { method: 'POST' });
-                const data = await response.json();
+                const response = await fetch(`/api/cancel-interview/${interviewId}`, {
+                    method: 'POST'
+                });
 
+                const data = await response.json();
                 if (data.success) {
-                    statusElement.innerHTML = `<i class="fas fa-check text-success"></i> ${data.message}`;
-                    setTimeout(() => {
-                        processingModal.hide();
-                        location.reload();
-                    }, 1500);
+                    showAlert('success', 'Interview cancelled successfully');
+                    setTimeout(() => location.reload(), 1500);
                 } else {
-                    statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> ${data.message}`;
+                    throw new Error(data.error);
                 }
             } catch (error) {
-                statusElement.innerHTML = `<i class="fas fa-exclamation-circle text-danger"></i> Error: ${error.message}`;
+                showAlert('danger', `Failed to cancel interview: ${error.message}`);
+            }
+        });
+    });
+
+    // Handle view CV
+    document.querySelectorAll('.view-cv').forEach(button => {
+        button.addEventListener('click', async function() {
+            const candidateId = this.dataset.candidateId;
+            try {
+                const response = await fetch(`/api/candidate-cv/${candidateId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const modalBody = document.querySelector('#cvModal .modal-body');
+                    modalBody.innerHTML = `
+                        <div class="mb-3">
+                            <h6>CV Content:</h6>
+                            <div class="border p-3 bg-light">
+                                <pre>${data.cv_text}</pre>
+                            </div>
+                        </div>
+                    `;
+                    cvModal.show();
+                } else {
+                    throw new Error(data.error || 'Failed to load CV');
+                }
+            } catch (error) {
+                showAlert('danger', `Failed to load CV: ${error.message}`);
             }
         });
     });
 });
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+    alertDiv.style.zIndex = '1050';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    setTimeout(() => alertDiv.remove(), 5000);
+}
 </script>
 {% endblock %} 

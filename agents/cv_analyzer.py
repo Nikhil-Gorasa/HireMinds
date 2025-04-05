@@ -3,159 +3,298 @@ from database.db import db
 from app.models.candidate import Candidate
 import json
 import logging
+import re
+from typing import Dict, List, Union
+from config import (
+    OLLAMA_MODEL, OLLAMA_ENDPOINT, MAX_TEXT_LENGTH, BATCH_SIZE,
+    SCORE_WEIGHTS, TECHNICAL_SKILLS, SOFT_SKILLS, CV_ANALYSIS_TEMPLATE
+)
+import asyncio
+import httpx
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def analyze_cv(cv_text, job_description):
-    """Analyze a CV against a job description using Ollama."""
-    try:
-        # Log input lengths to debug potential truncation issues
-        logger.info(f"Processing CV analysis - CV length: {len(cv_text)}, Job desc length: {len(job_description)}")
-        
-        # Truncate texts if they're too long to avoid model context limits
-        max_length = 4000
-        if len(cv_text) > max_length:
-            logger.warning(f"CV text truncated from {len(cv_text)} to {max_length} characters")
-            cv_text = cv_text[:max_length]
-        if len(job_description) > max_length:
-            logger.warning(f"Job description truncated from {len(job_description)} to {max_length} characters")
-            job_description = job_description[:max_length]
+def clean_text(text: str) -> str:
+    """Clean and normalize text content."""
+    # Remove extra whitespace and normalize line endings
+    text = re.sub(r'\s+', ' ', text.strip())
+    # Remove any control characters
+    text = ''.join(char for char in text if ord(char) >= 32 or char == '\n')
+    return text
 
-        prompt = f"""You are a strict HR recruiter with high standards. Analyze this CV against the job requirements.
+def extract_name_from_cv(cv_text: str) -> str:
+    """Try to extract candidate name from CV text."""
+    # Look for common name patterns at the start of the CV
+    first_lines = cv_text.split('\n')[:5]  # Check first 5 lines
+    for line in first_lines:
+        line = line.strip()
+        # Skip lines that are too long (likely not a name)
+        if len(line) > 50:
+            continue
+        # Skip lines with common words that aren't names
+        if any(word in line.lower() for word in ['resume', 'cv', 'curriculum', 'vitae', 'address', 'phone', 'email']):
+            continue
+        # If we have a reasonable length line with 2-4 words, it's likely a name
+        words = line.split()
+        if 2 <= len(words) <= 4:
+            return line
+    return "Unnamed Candidate"
 
-Job Description:
-{job_description}
+def extract_skills(text: str) -> List[str]:
+    """Extract both technical and soft skills from text."""
+    text = text.lower()
+    skills = set()
+    
+    # Look for technical skills
+    for skill in TECHNICAL_SKILLS:
+        if skill.lower() in text:
+            skills.add(skill)
+    
+    # Look for soft skills
+    for skill in SOFT_SKILLS:
+        if skill.lower() in text:
+            skills.add(skill)
+    
+    return list(skills)
 
-CV Content:
-{cv_text}
+def calculate_skill_match(cv_skills: List[str], job_skills: List[str]) -> float:
+    """Calculate skill match score between CV and job skills."""
+    if not job_skills:
+        return 0.5
+    
+    cv_skills_set = set(s.lower() for s in cv_skills)
+    job_skills_set = set(s.lower() for s in job_skills)
+    
+    matches = cv_skills_set.intersection(job_skills_set)
+    return len(matches) / len(job_skills_set) if job_skills_set else 0.5
 
-Use these strict criteria for scoring:
-1. Essential skills match (40% of score)
-2. Experience relevance (30% of score)
-3. Education fit (15% of score)
-4. Additional qualifications (15% of score)
-
-A score above 0.75 is considered excellent
-A score between 0.6-0.75 is good
-A score between 0.45-0.6 needs careful consideration
-A score below 0.45 is generally not recommended
-
-Provide a JSON response with ONLY these fields:
-{{
-    "match_score": <number between 0.0 and 1.0>,
-    "strengths": ["strength 1", "strength 2", ...],
-    "weaknesses": ["weakness 1", "weakness 2", ...],
-    "key_skills": ["skill 1", "skill 2", ...],
-    "recommendation": "clear hiring recommendation with specific reasons"
-}}
-
-Return ONLY the JSON object, no other text or explanation."""
-
-        # Make API call with timeout and retries
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Attempt {attempt + 1} of {max_retries}")
-                response = ollama.chat(model='tinyllama:latest', messages=[
-                    {
-                        'role': 'system',
-                        'content': 'You are an expert HR recruiter. Respond only with the requested JSON format.'
-                    },
-                    {
-                        'role': 'user',
-                        'content': prompt
+async def analyze_cv_batch(cvs: List[Dict], job_description: str) -> List[Dict]:
+    """Analyze a batch of CVs against a job description."""
+    job_skills = extract_skills(job_description)
+    
+    async def process_single_cv(cv_data: Dict) -> Dict:
+        try:
+            cv_text = clean_text(cv_data['cv_text'])
+            if len(cv_text) > MAX_TEXT_LENGTH:
+                cv_text = cv_text[:MAX_TEXT_LENGTH]
+            
+            # Extract skills before LLM analysis
+            cv_skills = extract_skills(cv_text)
+            skill_match_score = calculate_skill_match(cv_skills, job_skills)
+            
+            # Prepare prompt
+            prompt = CV_ANALYSIS_TEMPLATE % (job_description, cv_text)
+            
+            # Get LLM analysis
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{OLLAMA_ENDPOINT}/api/chat",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are an expert HR recruiter. Return only valid JSON."
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ]
                     }
-                ])
+                )
                 
-                content = response['message']['content'].strip()
-                logger.info(f"Raw response received: {content[:200]}...")  # Log first 200 chars
+                if response.status_code != 200:
+                    raise Exception(f"API error: {response.status_code}")
+                
+                content = response.json()['message']['content'].strip()
                 
                 # Extract JSON from response
-                start = content.find('{')
-                end = content.rfind('}') + 1
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if not json_match:
+                    raise ValueError("No JSON found in response")
                 
-                if start >= 0 and end > start:
-                    json_str = content[start:end]
-                    logger.info(f"Extracted JSON: {json_str[:200]}...")
-                    
-                    analysis = json.loads(json_str)
-                    
-                    # Validate all required fields are present
-                    required_fields = {'match_score', 'strengths', 'weaknesses', 'key_skills', 'recommendation'}
-                    if not all(field in analysis for field in required_fields):
-                        missing = required_fields - set(analysis.keys())
-                        logger.error(f"Missing required fields: {missing}")
-                        raise ValueError(f"Missing required fields: {missing}")
-                    
-                    # Clean and validate the response
-                    cleaned = {
-                        'match_score': float(min(max(float(analysis['match_score']), 0.0), 1.0)),
-                        'strengths': analysis['strengths'][:5] if analysis['strengths'] else ["No specific strengths identified"],
-                        'weaknesses': analysis['weaknesses'][:5] if analysis['weaknesses'] else ["No specific weaknesses identified"],
-                        'key_skills': analysis['key_skills'][:10] if analysis['key_skills'] else ["No specific skills identified"],
-                        'recommendation': str(analysis['recommendation']) or "Manual review recommended"
+                analysis = json.loads(json_match.group(0))
+                
+                # Merge skill-based and LLM analysis
+                analysis['match_score'] = round((skill_match_score + float(analysis['match_score'])) / 2, 2)
+                analysis['key_skills'] = list(set(cv_skills))  # Use extracted skills
+                
+                if 'score_breakdown' not in analysis:
+                    analysis['score_breakdown'] = {
+                        'essential_skills': skill_match_score,
+                        'experience': analysis.get('match_score', 0.5),
+                        'education': 0.5,
+                        'additional': 0.5
                     }
-                    
-                    # Validate lists contain actual values
-                    for key in ['strengths', 'weaknesses', 'key_skills']:
-                        cleaned[key] = [str(item) for item in cleaned[key] if item and str(item).strip()]
-                        if not cleaned[key]:
-                            cleaned[key] = [f"No {key[:-1] if key.endswith('s') else key} identified"]
-                    
-                    logger.info("Successfully analyzed CV")
-                    return cleaned
                 
-                logger.error("No valid JSON found in response")
-                if attempt < max_retries - 1:
-                    continue
+                return {
+                    'candidate_id': cv_data.get('candidate_id'),
+                    'name': cv_data.get('name', extract_name_from_cv(cv_text)),
+                    'analysis': analysis
+                }
                 
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON parsing error: {str(e)}")
-                if attempt < max_retries - 1:
-                    continue
-            except Exception as e:
-                logger.error(f"Error during analysis attempt {attempt + 1}: {str(e)}")
-                if attempt < max_retries - 1:
-                    continue
-        
-        # If all retries failed, return a default response
-        logger.error("All analysis attempts failed")
-        return {
-            'match_score': 0.5,
-            'strengths': ["Analysis failed - requires manual review"],
-            'weaknesses': ["Could not automatically analyze skills"],
-            'key_skills': ["Manual skill assessment needed"],
-            'recommendation': "Please review CV manually due to analysis failure"
-        }
-            
-    except Exception as e:
-        logger.error(f"Critical error in CV analysis: {str(e)}")
-        return {
-            'match_score': 0.0,
-            'strengths': ["Error occurred during analysis"],
-            'weaknesses': ["Could not complete automated analysis"],
-            'key_skills': [],
-            'recommendation': f"Technical error - please review manually: {str(e)}"
-        }
+        except Exception as e:
+            logger.error(f"Error analyzing CV: {str(e)}")
+            return {
+                'candidate_id': cv_data.get('candidate_id'),
+                'name': cv_data.get('name', "Unknown"),
+                'analysis': {
+                    'match_score': skill_match_score,
+                    'score_breakdown': {
+                        'essential_skills': skill_match_score,
+                        'experience': 0.5,
+                        'education': 0.5,
+                        'additional': 0.5
+                    },
+                    'strengths': [f"Has skills: {', '.join(cv_skills[:3])}"] if cv_skills else ["Manual review needed"],
+                    'weaknesses': ["Automated analysis failed"],
+                    'key_skills': cv_skills,
+                    'recommendation': f"Technical error - but found {len(cv_skills)} matching skills"
+                }
+            }
+    
+    # Process CVs in parallel
+    tasks = [process_single_cv(cv) for cv in cvs]
+    results = await asyncio.gather(*tasks)
+    return results
 
-def store_candidate(name, cv_text, job_id, analysis=None):
-    """Store a candidate in the database."""
+def analyze_cvs(cvs: List[Dict], job_description: str) -> List[Dict]:
+    """Analyze multiple CVs against a job description."""
+    # Clean job description
+    job_description = clean_text(job_description)
+    if len(job_description) > MAX_TEXT_LENGTH:
+        job_description = job_description[:MAX_TEXT_LENGTH]
+    
+    # Process CVs in batches
+    results = []
+    for i in range(0, len(cvs), BATCH_SIZE):
+        batch = cvs[i:i + BATCH_SIZE]
+        batch_results = asyncio.run(analyze_cv_batch(batch, job_description))
+        results.extend(batch_results)
+    
+    return results
+
+def store_candidate(name: str, cv_text: str, job_id: int, analysis: Dict = None) -> Candidate:
+    """Store a candidate in the database with proper error handling."""
     try:
         logger.info(f"Storing candidate: {name} for job_id: {job_id}")
+        
+        # If no name provided, try to extract from CV
+        if not name or name.strip() == "":
+            name = extract_name_from_cv(cv_text)
+        
+        # Clean the CV text
+        cv_text = clean_text(cv_text)
+        
+        # Create candidate with safe defaults if analysis is missing
         candidate = Candidate(
             name=name,
             cv_text=cv_text,
             job_id=job_id,
-            analysis=json.dumps(analysis) if analysis else None,
+            analysis=json.dumps(analysis) if analysis else json.dumps({
+                'match_score': 0.0,
+                'strengths': ["Pending analysis"],
+                'weaknesses': ["Pending analysis"],
+                'key_skills': ["Pending analysis"],
+                'recommendation': "Pending automated analysis"
+            }),
             match_score=analysis.get('match_score', 0.0) if analysis else 0.0
         )
+        
         db.session.add(candidate)
         db.session.commit()
         logger.info(f"Successfully stored candidate {name}")
         return candidate
+        
     except Exception as e:
         logger.error(f"Error storing candidate {name}: {str(e)}")
         db.session.rollback()
         raise 
+
+def analyze_cv(cv_text: str, job_description: str) -> Dict:
+    """Analyze a single CV against a job description (backward compatibility)."""
+    try:
+        # Clean and validate inputs
+        cv_text = clean_text(cv_text)
+        job_description = clean_text(job_description)
+        
+        if not cv_text or not job_description:
+            raise ValueError("Empty CV text or job description")
+        
+        # Extract skills before LLM analysis
+        cv_skills = extract_skills(cv_text)
+        job_skills = extract_skills(job_description)
+        skill_match_score = calculate_skill_match(cv_skills, job_skills)
+        
+        # Prepare prompt
+        prompt = CV_ANALYSIS_TEMPLATE % (job_description, cv_text)
+        
+        # Get LLM analysis
+        response = ollama.chat(
+            model=OLLAMA_MODEL,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': 'You are an expert HR recruiter. Return only valid JSON.'
+                },
+                {
+                    'role': 'user',
+                    'content': prompt
+                }
+            ]
+        )
+        
+        if not response or not isinstance(response, dict) or 'message' not in response:
+            raise ValueError("Invalid API response")
+        
+        content = response['message']['content'].strip()
+        
+        # Extract JSON from response
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if not json_match:
+            raise ValueError("No JSON found in response")
+        
+        analysis = json.loads(json_match.group(0))
+        
+        # Validate analysis structure
+        if not isinstance(analysis, dict):
+            raise ValueError("Invalid analysis format")
+        
+        # Ensure all required fields exist
+        required_fields = ['match_score', 'strengths', 'weaknesses', 'key_skills', 'recommendation']
+        for field in required_fields:
+            if field not in analysis:
+                analysis[field] = []
+        
+        # Merge skill-based and LLM analysis
+        analysis['match_score'] = round((skill_match_score + float(analysis.get('match_score', 0.5))) / 2, 2)
+        analysis['key_skills'] = list(set(cv_skills))  # Use extracted skills
+        
+        if 'score_breakdown' not in analysis:
+            analysis['score_breakdown'] = {
+                'essential_skills': skill_match_score,
+                'experience': analysis.get('match_score', 0.5),
+                'education': 0.5,
+                'additional': 0.5
+            }
+        
+        return analysis
+        
+    except Exception as e:
+        logger.error(f"Error in CV analysis: {str(e)}")
+        return {
+            'match_score': skill_match_score,
+            'score_breakdown': {
+                'essential_skills': skill_match_score,
+                'experience': 0.5,
+                'education': 0.5,
+                'additional': 0.5
+            },
+            'strengths': [f"Has skills: {', '.join(cv_skills[:3])}"] if cv_skills else ["Manual review needed"],
+            'weaknesses': ["Automated analysis failed"],
+            'key_skills': cv_skills,
+            'recommendation': f"Technical error - but found {len(cv_skills)} matching skills"
+        } 
