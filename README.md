@@ -1,24 +1,20 @@
 # HireMinds - AI-Powered Recruitment Platform
 
-HireMinds is an intelligent recruitment platform that uses AI to analyze CVs, match candidates with jobs, and streamline the hiring process. The platform leverages Ollama's language models for advanced CV analysis and candidate matching.
+A modern web application for CV analysis and candidate matching using AI.
 
 ## Features
 
-- 📄 CV Analysis and Parsing
-- 🎯 Job-Candidate Matching
-- 📊 Candidate Scoring
-- 📅 Interview Scheduling
-- 👥 Shortlisting Management
-- 📱 Modern Web Interface
+- CV Analysis
+- Job-Candidate Matching
+- Interview Scheduling
+- AI-Powered Insights
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
-
-1. Python 3.8 or higher
-2. Ollama (for AI model support)
-3. Git
-4. SQLite (included with Python)
+- Python 3.8 or higher
+- Ollama (for local AI processing)
+- Git
+- SQLite (for local development)
 
 ## Installation
 
@@ -31,10 +27,7 @@ cd hireminds
 2. Create and activate a virtual environment:
 ```bash
 python -m venv venv
-# On Windows
-venv\Scripts\activate
-# On Unix or MacOS
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. Install dependencies:
@@ -43,32 +36,26 @@ pip install -r requirements.txt
 ```
 
 4. Install Ollama:
-   - Visit [Ollama's official website](https://ollama.ai/download)
-   - Download and install Ollama for your operating system
-   - Start the Ollama service
+   - Visit [Ollama.ai](https://ollama.ai) to download and install Ollama
+   - Pull the required model:
+   ```bash
+   ollama pull mistral
+   ```
 
-5. Pull the required model:
+5. Create a `.env` file:
 ```bash
-ollama pull mistral:latest
+cp .env.example .env
 ```
 
-## Configuration
-
-1. Create a `.env` file in the root directory:
+6. Update the `.env` file with your settings:
 ```env
 FLASK_APP=app
 FLASK_ENV=development
-SECRET_KEY=your-secret-key-here
+SECRET_KEY=your-generated-secret-key-here
+OLLAMA_API_URL=http://localhost:11434
 ```
 
-2. Update the model settings in `config.py` if needed:
-```python
-OLLAMA_MODEL = "mistral:latest"  # Change this to use a different model
-```
-
-## Database Setup
-
-1. Initialize the database:
+7. Initialize the database:
 ```bash
 flask db init
 flask db migrate
@@ -77,68 +64,40 @@ flask db upgrade
 
 ## Running the Application
 
-1. Start the Flask development server:
+1. Start Ollama:
+```bash
+ollama serve
+```
+
+2. In a new terminal, start the Flask application:
 ```bash
 flask run
 ```
 
-2. Open your browser and navigate to:
-```
-http://localhost:5000
-```
+The application will be available at `http://localhost:5000`
 
-## Docker Deployment
+## Important Note
 
-1. Build the Docker image:
-```bash
-docker build -t hireminds .
-```
+This is a frontend-only deployment on Render.com. The AI processing features require Ollama to be running locally on your machine. When using the application:
 
-2. Run the container:
-```bash
-docker run -p 5000:5000 hireminds
-```
-
-## Production Deployment
-
-For production deployment, we recommend using:
-
-1. Gunicorn as the WSGI server:
-```bash
-pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 "app:create_app()"
-```
-
-2. Nginx as the reverse proxy:
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
+1. The frontend will be hosted on Render.com
+2. AI processing will be handled by your local Ollama instance
+3. Make sure Ollama is running and accessible at `http://localhost:11434`
 
 ## Troubleshooting
 
-1. If Ollama is not responding:
-   - Ensure Ollama service is running
-   - Check if the model is downloaded
-   - Verify the endpoint in config.py
+### Ollama Issues
+- Ensure Ollama is running (`ollama serve`)
+- Check if the model is pulled (`ollama list`)
+- Verify the API URL in your `.env` file
 
-2. Database issues:
-   - Check database migrations
-   - Verify SQLite file permissions
-   - Ensure proper database initialization
+### Database Issues
+- Check if the database is initialized
+- Verify database migrations are up to date
 
-3. Application errors:
-   - Check logs in `logs/app.log`
-   - Verify environment variables
-   - Ensure all dependencies are installed
+### Application Issues
+- Check the logs for error messages
+- Verify all environment variables are set correctly
 
 ## Contributing
 
@@ -154,4 +113,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-For support, please open an issue in the GitHub repository or contact the maintainers. 
+For support, please open an issue in the GitHub repository. 

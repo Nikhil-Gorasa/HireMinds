@@ -13,5 +13,7 @@ services:
         value: production
       - key: SECRET_KEY
         sync: false
+      - key: OLLAMA_API_URL
+        value: "http://localhost:11434"  # This will be overridden by users locally
     healthCheckPath: /
     autoDeploy: true 
