@@ -1,19 +1,15 @@
 services:
   - type: web
-    name: hireminds
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -w 4 -b 0.0.0.0:$PORT "app:create_app()"
+    name: hireminds-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.0
-      - key: FLASK_APP
-        value: app
-      - key: FLASK_ENV
-        value: production
-      - key: SECRET_KEY
-        sync: false
-      - key: OLLAMA_API_URL
-        value: "http://localhost:11434"  # This will be overridden by users locally
+      - key: NODE_VERSION
+        value: 16
     healthCheckPath: /
     autoDeploy: true 
