@@ -1,19 +1,27 @@
 from flask import Flask
-from database.db import db
+from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def create_app():
     app = Flask(__name__)
     
-    # Configure the database
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'recruitment.db')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    # Configure database
+    database_url = os.getenv('DATABASE_URL', 'sqlite:///app.db')
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev')
     
     # Initialize extensions
     db.init_app(app)
-    migrate = Migrate(app, db)
+    migrate.init_app(app, db)
     
     # Register blueprints
     from app.routes import main

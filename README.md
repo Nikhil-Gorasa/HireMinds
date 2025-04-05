@@ -1,104 +1,144 @@
-# AI-Powered Job Application Screening System
+# HireMinds - AI-Powered Recruitment Platform
 
-## Overview
-
-This project implements an AI-powered system for screening job applications using Ollama for natural language processing. The system can process job descriptions and candidate CVs to match candidates with jobs and automatically shortlist the best matches.
+HireMinds is an intelligent recruitment platform that uses AI to analyze CVs, match candidates with jobs, and streamline the hiring process. The platform leverages Ollama's language models for advanced CV analysis and candidate matching.
 
 ## Features
 
-- Import job descriptions from Excel/CSV files
-- Import candidate CVs from PDF files
-- AI-powered analysis of job descriptions and CVs
-- Automatic candidate shortlisting based on match scores
-- Interview scheduling for shortlisted candidates
-- Real-time progress tracking and status updates
+- 📄 CV Analysis and Parsing
+- 🎯 Job-Candidate Matching
+- 📊 Candidate Scoring
+- 📅 Interview Scheduling
+- 👥 Shortlisting Management
+- 📱 Modern Web Interface
 
-## Technical Stack
+## Prerequisites
 
-- Python 3.8+
-- Flask web framework
-- SQLAlchemy ORM
-- Ollama for NLP
-- Bootstrap 5 for UI
-- JavaScript for frontend interactivity
+Before you begin, ensure you have the following installed:
+
+1. Python 3.8 or higher
+2. Ollama (for AI model support)
+3. Git
+4. SQLite (included with Python)
 
 ## Installation
 
-1. Clone the repository
-2. Create a virtual environment:
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/hireminds.git
+cd hireminds
+```
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+# On Windows
+venv\Scripts\activate
+# On Unix or MacOS
+source venv/bin/activate
+```
 
 3. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Initialize the database:
-
-   ```bash
-   python init_db.py
-   ```
-
-## Usage
-
-1. Start the Flask application:
-
-   ```bash
-   python run.py
-   ```
-
-2. Open your browser and navigate to `http://localhost:5000`
-3. Import job descriptions using Excel/CSV files
-4. Import candidate CVs using PDF files
-5. Use the dashboard to monitor processing status
-6. View and manage shortlisted candidates
-
-## Project Structure
-
-```
-.
-├── app/
-│   ├── __init__.py
-│   ├── routes.py
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── job.py
-│   │   ├── candidate.py
-│   │   └── shortlisted_candidate.py
-│   └── templates/
-│       ├── base.html
-│       ├── dashboard.html
-│       ├── jobs.html
-│       └── candidates.html
-├── agents/
-│   ├── __init__.py
-│   ├── summarizer.py
-│   ├── analyzer.py
-│   ├── shortlister.py
-│   └── scheduler.py
-├── database/
-│   ├── __init__.py
-│   └── db.py
-├── uploads/
-├── requirements.txt
-├── init_db.py
-└── run.py
+```bash
+pip install -r requirements.txt
 ```
 
-## API Endpoints
+4. Install Ollama:
+   - Visit [Ollama's official website](https://ollama.ai/download)
+   - Download and install Ollama for your operating system
+   - Start the Ollama service
 
-- `POST /api/import-jobs`: Import job descriptions
-- `POST /api/import-cvs/<job_id>`: Import CVs for a specific job
-- `POST /api/import-all-cvs`: Import CVs for all jobs
-- `POST /api/shortlist-candidates/<job_id>`: Shortlist candidates for a job
-- `POST /api/shortlist-all`: Shortlist candidates for all jobs
-- `POST /api/schedule-interviews/<job_id>`: Schedule interviews for shortlisted candidates
-- `POST /api/process-all`: Process all data (import jobs, CVs, and shortlist)
+5. Pull the required model:
+```bash
+ollama pull mistral:latest
+```
+
+## Configuration
+
+1. Create a `.env` file in the root directory:
+```env
+FLASK_APP=app
+FLASK_ENV=development
+SECRET_KEY=your-secret-key-here
+```
+
+2. Update the model settings in `config.py` if needed:
+```python
+OLLAMA_MODEL = "mistral:latest"  # Change this to use a different model
+```
+
+## Database Setup
+
+1. Initialize the database:
+```bash
+flask db init
+flask db migrate
+flask db upgrade
+```
+
+## Running the Application
+
+1. Start the Flask development server:
+```bash
+flask run
+```
+
+2. Open your browser and navigate to:
+```
+http://localhost:5000
+```
+
+## Docker Deployment
+
+1. Build the Docker image:
+```bash
+docker build -t hireminds .
+```
+
+2. Run the container:
+```bash
+docker run -p 5000:5000 hireminds
+```
+
+## Production Deployment
+
+For production deployment, we recommend using:
+
+1. Gunicorn as the WSGI server:
+```bash
+pip install gunicorn
+gunicorn -w 4 -b 0.0.0.0:5000 "app:create_app()"
+```
+
+2. Nginx as the reverse proxy:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## Troubleshooting
+
+1. If Ollama is not responding:
+   - Ensure Ollama service is running
+   - Check if the model is downloaded
+   - Verify the endpoint in config.py
+
+2. Database issues:
+   - Check database migrations
+   - Verify SQLite file permissions
+   - Ensure proper database initialization
+
+3. Application errors:
+   - Check logs in `logs/app.log`
+   - Verify environment variables
+   - Ensure all dependencies are installed
 
 ## Contributing
 
@@ -110,4 +150,8 @@ This project implements an AI-powered system for screening job applications usin
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For support, please open an issue in the GitHub repository or contact the maintainers. 
